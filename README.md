@@ -13,6 +13,18 @@ npm start
 
 API: `GET /api/health`, `POST /api/chat` dengan body `{ "question": "..." }`.
 
+## Knowledge base resmi
+
+Dokumen yang sudah diterima dan berhasil di-index:
+
+- `Perpol_No_1_Tahun_2025.pdf` — 19 chunk
+
+Dokumen kedua yang ditunggu:
+
+- `Pengumuman_SBP_TA_2027.pdf`
+
+Setelah kedua dokumen tersedia, jalankan ulang `npm run index`. File index bersifat hasil generate dan tidak disimpan ke Git.
+
 ## LLM LiteLLM + Gemini
 
 Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model; backend tidak memanggil Gemini SDK secara langsung. Jalankan proxy dengan Docker:
