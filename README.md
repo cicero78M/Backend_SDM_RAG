@@ -2,6 +2,25 @@
 
 Backend REST untuk prototype SDM RAG. Backend melakukan ingest PDF/TXT/MD, chunking, retrieval, jawaban extractive yang aman, sitasi sumber, dan generasi jawaban melalui LiteLLM + Gemini.
 
+## Tujuan dan arsitektur
+
+Prototype ini menjawab pertanyaan berdasarkan knowledge base dokumen SDM Polri, bukan berdasarkan pengetahuan bebas model.
+
+```text
+PDF resmi → ekstraksi teks → chunking → index retrieval
+Pertanyaan → retrieval top-k → context + sumber → LiteLLM → Gemini → jawaban
+```
+
+Implementasi retrieval saat ini bersifat deterministik dan mudah diaudit. Chunk yang dipakai dikirim sebagai context ke LLM, sehingga jawaban dapat menampilkan sumber dokumen dan nomor chunk.
+
+## Struktur utama
+
+- `src/server.js` — HTTP API, retrieval, fallback extractive, dan adapter LiteLLM
+- `scripts/index.js` — ekstraksi PDF dan pembuatan chunk
+- `data/knowledge/` — dokumen sumber resmi
+- `data/index.json` — index hasil generate lokal, tidak disimpan ke Git
+- `test/` — pengujian backend
+
 ## Jalankan
 
 ```bash
@@ -12,6 +31,14 @@ npm start
 ```
 
 API: `GET /api/health`, `POST /api/chat` dengan body `{ "question": "..." }`.
+
+Contoh:
+
+```bash
+curl -X POST http://localhost:3000/api/chat \
+  -H 'content-type: application/json' \
+  -d '{"question":"Apa saja unsur Faktor Generik?"}'
+```
 
 ## Knowledge base resmi
 
@@ -49,3 +76,7 @@ Pertanyaan → retrieval knowledge base → top-k context + citation
 ```
 
 Catatan: implementasi prototype saat ini memakai retrieval lokal yang deterministik agar mudah diaudit. Vector database/pgvector dapat ditambahkan tanpa mengubah kontrak API; dokumen resmi tetap wajib dimasukkan ke `data/knowledge/` sebelum indexing.
+
+## Keterbatasan prototype
+
+Versi ujian ini belum memakai embedding model dan vector database eksternal; retrieval menggunakan pencocokan leksikal dengan ekspansi istilah. Pengembangan berikutnya dapat mengganti lapisan retrieval dengan embedding dan pgvector tanpa mengubah API chat.
