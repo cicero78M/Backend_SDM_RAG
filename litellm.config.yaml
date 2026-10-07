@@ -3,7 +3,10 @@ model_list:
     litellm_params:
       model: gemini/gemini-2.5-flash
       api_key: os.environ/GEMINI_API_KEY
+  - model_name: gemini-embedding
+    litellm_params:
+      model: gemini/text-embedding-004
+      api_key: os.environ/GEMINI_API_KEY
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
-
