@@ -48,9 +48,12 @@ function localAnswer(query, hits) {
   return { answer, confidence: hits[0].score > 0.13 ? 'high' : 'medium' };
 }
 async function generateWithLLM(query, hits) {
-  if (!process.env.LLM_BASE_URL || !process.env.LLM_MODEL) return null;
+  const baseUrl = process.env.LITELLM_BASE_URL || process.env.LLM_BASE_URL;
+  const apiKey = process.env.LITELLM_API_KEY || process.env.LLM_API_KEY || process.env.GEMINI_API_KEY;
+  const model = process.env.LITELLM_MODEL || process.env.LLM_MODEL;
+  if (!baseUrl || !model) return null;
   const context = hits.map((hit) => `[${hit.source}, bagian ${hit.chunk}] ${hit.content}`).join('\n');
-  const response = await fetch(`${process.env.LLM_BASE_URL.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(process.env.LLM_API_KEY ? { authorization: `Bearer ${process.env.LLM_API_KEY}` } : {}) }, body: JSON.stringify({ model: process.env.LLM_MODEL, temperature: 0.1, messages: [{ role: 'system', content: 'Jawab hanya berdasarkan konteks. Jika tidak ada jawabannya, katakan informasi tidak ditemukan. Jangan mengarang. Gunakan bahasa Indonesia.' }, { role: 'user', content: `Pertanyaan: ${query}\n\nKonteks:\n${context}` }] }) });
+  const response = await fetch(`${baseUrl.replace(/\/$/, '')}/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) }, body: JSON.stringify({ model, temperature: 0.1, messages: [{ role: 'system', content: 'Jawab hanya berdasarkan konteks. Jika tidak ada jawabannya, katakan informasi tidak ditemukan. Jangan mengarang. Gunakan bahasa Indonesia.' }, { role: 'user', content: `Pertanyaan: ${query}\n\nKonteks:\n${context}` }] }) });
   if (!response.ok) throw new Error(`LLM returned ${response.status}`);
   const data = await response.json(); return data.choices?.[0]?.message?.content || null;
 }
