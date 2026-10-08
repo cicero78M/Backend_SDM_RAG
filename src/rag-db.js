@@ -1,3 +1,6 @@
+// Lapisan penyimpanan/retrieval PostgreSQL + pgvector.
+// Bila database tidak dikonfigurasi, server menggunakan index JSON sebagai
+// fallback dan modul ini hanya melaporkan status storage.
 const { Pool } = require('pg');
 
 const connectionString = process.env.RAG_DATABASE_URL || process.env.DATABASE_URL || '';
@@ -8,6 +11,8 @@ const pool = enabled ? new Pool({ connectionString, max: 5, connectionTimeoutMil
 function vectorLiteral(vector) { return `[${vector.join(',')}]`; }
 
 async function retrieve(vector, query = '', limit = 5) {
+  // Search hybrid: cosine similarity pgvector, PostgreSQL full-text search,
+  // dan authority rank dokumen resmi.
   if (!pool) return null;
   const result = await pool.query(`
     SELECT c.content, c.chunk_no AS chunk, c.page, d.source,
@@ -27,6 +32,8 @@ async function retrieve(vector, query = '', limit = 5) {
 }
 
 async function health() {
+  // Readiness memastikan extension vector aktif, ada chunk aktif, semua chunk
+  // memiliki embedding, dan dimensi vector sesuai kontrak 384.
   if (!requested) return { requested: false, ready: false, storage: 'json-fallback' };
   if (!pool) return { requested: true, ready: false, storage: 'degraded', error: 'Database URL belum dikonfigurasi.' };
   try {

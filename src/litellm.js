@@ -1,3 +1,5 @@
+// Adapter HTTP OpenAI-compatible untuk model chat LiteLLM.
+// Jalur embedding RAG utama tetap menggunakan src/embedding.js secara lokal.
 const config = () => ({
   baseUrl: (process.env.LITELLM_BASE_URL || 'http://localhost:4000/v1').replace(/\/$/, ''),
   apiKey: process.env.LITELLM_API_KEY || process.env.LITELLM_MASTER_KEY || '',
@@ -6,6 +8,8 @@ const config = () => ({
 });
 
 async function request(endpoint, payload) {
+  // Semua request ke LiteLLM dipusatkan di sini agar base URL, authentication,
+  // dan pemeriksaan HTTP error konsisten.
   const settings = config();
   const response = await fetch(`${settings.baseUrl}/${endpoint}`, {
     method: 'POST',
@@ -17,6 +21,7 @@ async function request(endpoint, payload) {
 }
 
 async function chat(messages, options = {}) {
+  // Menghasilkan jawaban berbasis context retrieval yang dikirim server.
   const settings = config();
   const data = await request('chat/completions', {
     model: options.model || settings.chatModel,
@@ -27,6 +32,7 @@ async function chat(messages, options = {}) {
 }
 
 async function embeddings(inputs, options = {}) {
+  // Adapter opsional untuk API embedding LiteLLM; bukan jalur default RAG.
   const settings = config();
   if (!options.model && !settings.embeddingModel) throw new Error('LiteLLM embedding model is not configured');
   const data = await request('embeddings', {

@@ -1,3 +1,4 @@
+ # Compose menyediakan service runtime lokal untuk database, LiteLLM, dan RAG.
 services:
   litellm:
     image: ghcr.io/berriai/litellm:main-latest

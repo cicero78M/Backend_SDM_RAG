@@ -1,3 +1,5 @@
+// Regression test snapshot knowledge base: sumber yang salah harus tetap tidak
+// aktif, sedangkan sumber terverifikasi dan metadata embedding harus tersedia.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');

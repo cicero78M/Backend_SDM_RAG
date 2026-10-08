@@ -1,3 +1,5 @@
+ # Alias internal yang dipakai backend; upstream model dapat diganti melalui
+ # environment/config tanpa mengubah kode server.
 model_list:
   - model_name: copilot-rag
     litellm_params:

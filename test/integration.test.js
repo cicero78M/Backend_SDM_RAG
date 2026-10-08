@@ -1,15 +1,18 @@
+// Smoke test endpoint HTTP terhadap service RAG yang sedang berjalan.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const baseUrl = (process.env.RAG_TEST_BASE_URL || 'http://127.0.0.1:3001').replace(/\/$/, '');
 
 async function request(path, options) {
+  // Helper agar setiap assertion menerima pasangan status HTTP dan JSON body.
   const response = await fetch(`${baseUrl}${path}`, options);
   const body = await response.json();
   return { response, body };
 }
 
 test('RAG HTTP integration endpoints expose readiness and structured citations', async () => {
+  // Uji health, penolakan out-of-domain, dan bentuk citation pertanyaan domain.
   const health = await request('/api/health');
   assert.ok([200, 503].includes(health.response.status));
   assert.equal(typeof health.body.ready, 'boolean');

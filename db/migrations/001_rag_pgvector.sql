@@ -1,5 +1,7 @@
 BEGIN;
 
+-- Schema persisten RAG yang terpisah dari tabel aplikasi SDM utama.
+-- pgvector menyimpan embedding 384 dimensi dan HNSW mempercepat cosine search.
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE SCHEMA IF NOT EXISTS rag AUTHORIZATION postgres;
 
