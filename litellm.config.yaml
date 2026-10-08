@@ -8,3 +8,8 @@ model_list:
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY
+
+litellm_settings:
+  # Hermes/OpenAI-compatible clients may send provider-specific fields that
+  # GitHub Copilot does not accept (for example reasoning_effort).
+  drop_params: true
