@@ -9,6 +9,9 @@ const indexFile = path.join(root, 'data', 'index.json');
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function metadataFor(source) {
+  if (/Perpol_No_1_Tahun_2025_Breakdown_Terstruktur/i.test(source)) return { document_type: 'regulation_breakdown', authority: 'structured_guidance', authority_rank: 0.97 };
+  if (/Perbaikan_Struktur_Asli\.docx/i.test(source)) return { document_type: 'selection_announcement_corrected', authority: 'verified_original_structure', authority_rank: 1, selection_code: 'SBP', selection_year: 2027 };
+  if (/Perbaikan_Struktur_Asli_Breakdown/i.test(source)) return { document_type: 'selection_announcement_breakdown', authority: 'structured_guidance', authority_rank: 0.97, selection_code: 'SBP', selection_year: 2027 };
   if (/Terverifikasi/i.test(source)) return { document_type: 'selection_announcement', authority: 'verified_original', authority_rank: 1, selection_code: 'SBP', selection_year: 2027 };
   if (/Breakdown_Seleksi/i.test(source)) return { document_type: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authority_rank: 0.96, selection_code: /SBP/i.test(source) ? 'SBP' : null, selection_year: /SBP/i.test(source) ? 2027 : null };
   return { document_type: 'normative_regulation', authority: 'verified_regulation', authority_rank: 0.98 };
@@ -16,7 +19,9 @@ function metadataFor(source) {
 
 async function main() {
   const index = JSON.parse(await fs.readFile(indexFile, 'utf8'));
-  const pool = new Pool();
+  const connectionString = process.env.RAG_DATABASE_URL || process.env.DATABASE_URL || '';
+  if (!connectionString) throw new Error('RAG_DATABASE_URL atau DATABASE_URL wajib tersedia untuk memuat index ke PostgreSQL.');
+  const pool = new Pool({ connectionString });
   const client = await pool.connect();
   const run = await client.query('INSERT INTO rag.ingestion_runs(embedding_model, embedding_dimensions, metadata) VALUES ($1,$2,$3::jsonb) RETURNING id', [index.embeddingModel || MODEL, index.embeddingDimensions || DIMENSIONS, JSON.stringify({ provider: index.embeddingProvider || 'unknown' })]);
   try {
@@ -41,6 +46,8 @@ async function main() {
           JSON.stringify({ source, chunk: record.chunk })]);
       }
     }
+    const activeSources = [...sources.keys()];
+    await client.query('UPDATE rag.documents SET is_active=false, updated_at=now() WHERE is_active AND NOT (source = ANY($1::text[]))', [activeSources]);
     await client.query('UPDATE rag.ingestion_runs SET finished_at=now(),status=\'completed\',source_count=$1,chunk_count=$2 WHERE id=$3', [sources.size, index.records?.length || 0, run.rows[0].id]);
     await client.query('COMMIT');
     console.log(`Loaded ${index.records?.length || 0} chunks from ${sources.size} sources into rag schema`);

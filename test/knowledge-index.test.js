@@ -19,13 +19,15 @@ test('the supplied SBP PDF is archived with its verified source hash', () => {
 test('versioned knowledge index contains the SBP announcement breakdown', () => {
   const indexPath = path.join(__dirname, '..', 'data', 'index.json');
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
-  const source = 'Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt';
+  const source = 'Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli_Breakdown.txt';
   const records = index.records.filter((record) => record.source === source);
 
   assert.ok(records.length > 0, `knowledge index missing ${source}`);
   assert.ok(records.some((record) => /Breakdown|MDDP|pangkat|seleksi/i.test(record.content)));
   assert.equal(index.embeddingModel, 'Xenova/multilingual-e5-small');
   assert.equal(index.embeddingDimensions, 384);
-  assert.ok(index.records.some((record) => record.source === 'Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx'));
+  assert.ok(index.records.some((record) => record.source === 'Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli.docx'));
+  assert.equal(index.records.some((record) => /OCR_Diperbaiki|OCR_Terkoreksi/i.test(record.source)), false);
   assert.ok(index.records.some((record) => /PENYELENGGARAAN SELEKSI.*SEKOLAH BINTARA/i.test(record.content)));
+  assert.ok(index.records.some((record) => /DASAR HUKUM YANG TERIDENTIFIKASI|Undang-Undang Nomor 2 Tahun 2002/i.test(record.content)));
 });
