@@ -3,6 +3,11 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+test('knowledge directory excludes the known incorrect SBP PDF', () => {
+  const knowledgeDir = path.join(__dirname, '..', 'data', 'knowledge');
+  assert.equal(fs.existsSync(path.join(knowledgeDir, 'Pengumuman_SBP_TA_2027.pdf')), false);
+});
+
 test('versioned knowledge index contains the SBP announcement breakdown', () => {
   const indexPath = path.join(__dirname, '..', 'data', 'index.json');
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));

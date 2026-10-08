@@ -142,7 +142,9 @@ Indexer default menggunakan empat sumber berikut:
 3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
 4. `Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt` — breakdown terstruktur untuk matriks pangkat/MDDP, checklist administrasi, tahapan, dan guardrail jawaban.
 
-`Pengumuman_SBP_TA_2027.pdf` adalah arsip dengan isi yang tidak sesuai pengumuman SBP sehingga tidak digunakan oleh indexer default. OCR lengkap juga dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi untuk menghindari angka OCR yang belum terkonfirmasi.
+`Pengumuman_SBP_TA_2027.pdf` yang pernah diterima telah diverifikasi salah: PDF tersebut berisi paparan seleksi keahlian basis data/data talenta, bukan pengumuman SBP, sehingga dihapus dari repository. OCR lengkap tetap dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi dan halaman resmi SSDM untuk menghindari angka OCR yang belum terkonfirmasi.
+
+Rujukan resmi SBP TA 2027 yang digunakan: https://e-dikbang.ssdm.polri.go.id/jadwal_seleksi/12
 
 Sumber terverifikasi tetap memiliki prioritas otoritatif. Breakdown SBP hanya membantu retrieval dan format jawaban; ia tidak boleh menambah persyaratan atau tanggal yang tidak ada pada sumber resmi.
 

@@ -9,7 +9,9 @@ Indexer default menggunakan empat dokumen knowledge base:
 
 `Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx` tetap menjadi dokumen kerja OCR untuk arsip/verifikasi, bukan sumber default karena mengandung teks OCR yang dapat terbaca keliru. Sumber terverifikasi tetap lebih otoritatif daripada breakdown.
 
-DOCX dibaca dengan parser `mammoth`, PDF dengan `pdf-parse`, kemudian seluruh isi dipecah menjadi chunk dan disimpan ke `data/index.json`. Salinan lama Perpol dan PDF bernama `Pengumuman_SBP_TA_2027.pdf` tidak diindeks secara default karena isinya bukan pengumuman SBP.
+File PDF bernama `Pengumuman_SBP_TA_2027.pdf` yang pernah diterima ternyata bukan pengumuman SBP: isinya adalah paparan seleksi keahlian basis data/data talenta dan tidak memuat SBP. File tersebut dihapus dari repository dan tidak boleh dipulihkan sebagai knowledge source. Rujukan resmi SBP yang dipakai adalah halaman SSDM Polri: https://e-dikbang.ssdm.polri.go.id/jadwal_seleksi/12
+
+DOCX dibaca dengan parser `mammoth`, PDF dengan `pdf-parse`, kemudian seluruh isi dipecah menjadi chunk dan disimpan ke `data/index.json`. PDF salah tersebut tidak lagi berada di repository; sumber SBP default hanya memakai ringkasan terverifikasi dan breakdown.
 
 Untuk memilih file lain secara eksplisit:
 
