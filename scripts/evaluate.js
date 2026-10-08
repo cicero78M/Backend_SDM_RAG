@@ -1,3 +1,5 @@
+// Evaluator regression berbasis evaluation/golden.json.
+// Script ini mengukur retrieval, dukungan klaim, citation, dan abstention.
 const fs = require('node:fs/promises');
 const path = require('node:path');
 
@@ -5,6 +7,8 @@ const baseUrl = (process.env.RAG_EVAL_BASE_URL || 'http://127.0.0.1:3001').repla
 const file = path.join(__dirname, '..', 'evaluation', 'golden.json');
 
 async function ask(item) {
+  // Satu retry dilakukan untuk rate limit agar hasil evaluasi tidak bias oleh
+  // batas request sementara.
   for (let attempt = 0; attempt < 2; attempt += 1) {
     const response = await fetch(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -23,11 +27,13 @@ async function ask(item) {
 }
 
 function containsTerms(answer, terms = []) {
+  // Pemeriksaan sederhana bahwa jawaban memuat istilah yang diwajibkan kasus.
   const normalized = String(answer || '').toLocaleLowerCase('id-ID');
   return terms.every((term) => normalized.includes(String(term).toLocaleLowerCase('id-ID')));
 }
 
 async function main() {
+  // Setiap kasus golden diuji terhadap endpoint yang sedang aktif.
   const cases = JSON.parse(await fs.readFile(file, 'utf8'));
   const results = [];
   for (const item of cases) {

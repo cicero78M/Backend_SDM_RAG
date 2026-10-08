@@ -1,3 +1,5 @@
+// HTTP application utama RAG: memuat index, melakukan domain gate dan
+// retrieval, lalu menghasilkan jawaban extractive atau melalui LiteLLM.
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -64,18 +66,23 @@ function rateLimit(req, key, max) {
 }
 
 function tokens(value) {
+  // Tokenisasi ringan untuk lexical search dan query expansion.
   return String(value).toLowerCase().normalize('NFKD').replace(/[^a-z0-9\s]/g, ' ').split(/\s+/).filter((token) => token.length > 2 && !stopWords.has(token));
 }
 function expandedTokens(query) {
+  // Menambahkan sinonim/domain terms agar istilah pengguna yang berbeda tetap
+  // dapat menemukan chunk yang relevan.
   const base = tokens(query);
   return [...new Set(base.concat(base.flatMap((token) => expansions.get(token) || [])))];
 }
 function inDomain(query) {
+  // Domain gate mencegah model menjawab pertanyaan di luar knowledge base.
   const normalized = String(query).toLowerCase();
   const metaTerms = ['apa saja yang bisa saya tanyakan', 'pertanyaan apa', 'cakupan knowledge base', 'topik yang tersedia', 'bisa ditanyakan', 'contoh pertanyaan'];
   return domainTerms.some((term) => normalized.includes(term)) || metaTerms.some((term) => normalized.includes(term));
 }
 function uniqueHits(hits) {
+  // Deduplicate sebelum citation agar chunk yang sama tidak tampil berulang.
   const seen = new Set();
   return hits.filter((hit) => {
     const key = `${hit.source}:${hit.chunk}:${hit.content}`;
@@ -85,6 +92,7 @@ function uniqueHits(hits) {
   });
 }
 function score(query, content) {
+  // Skor lexical sederhana: kecocokan token, frekuensi, dan exact phrase.
   const wanted = expandedTokens(query);
   const words = tokens(content);
   const counts = new Map(); words.forEach((word) => counts.set(word, (counts.get(word) || 0) + 1));
@@ -95,12 +103,15 @@ function score(query, content) {
   return value / Math.sqrt(Math.max(words.length, 1));
 }
 function cosine(a, b) {
+  // Similarity fallback untuk embedding yang tersimpan di index JSON.
   if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return 0;
   let dot = 0; let left = 0; let right = 0;
   for (let i = 0; i < a.length; i += 1) { dot += a[i] * b[i]; left += a[i] ** 2; right += b[i] ** 2; }
   return left && right ? dot / Math.sqrt(left * right) : 0;
 }
 async function retrieve(query, limit = 5) {
+  // Prioritas storage: PostgreSQL hybrid search; fallback ke JSON semantic+
+  // lexical search jika database tidak tersedia atau gagal.
   let queryVector = null;
   try { queryVector = (await embed(query, 'query'))[0]; } catch (error) { console.warn(`Local query embedding unavailable: ${error.message}`); }
   if (queryVector && ragDb.enabled) {
@@ -120,6 +131,7 @@ function sentences(text) {
   return text.match(/[^.!?]+[.!?]+/g) || [text];
 }
 function localAnswer(query, hits) {
+  // Fallback extractive yang hanya menyusun kalimat dari chunk hasil retrieval.
   if (!hits.length) return { answer: 'Informasi tersebut tidak ditemukan dalam knowledge base yang tersedia. Silakan ajukan pertanyaan dengan istilah atau topik yang lebih spesifik.', confidence: 'low' };
   const queryTerms = expandedTokens(query);
   const all = hits.flatMap((hit) => sentences(hit.content).map((sentence) => ({ sentence: sentence.trim(), hit, score: score(queryTerms.join(' '), sentence) })))
@@ -154,6 +166,8 @@ function localAnswer(query, hits) {
   return { answer, confidence: hits[0].score > 0.13 ? 'high' : 'medium' };
 }
 function stripInlineCitations(value) {
+  // Citation dikembalikan sebagai field terstruktur, sehingga citation inline
+  // dari model dibersihkan dari badan jawaban.
   return String(value)
     .replace(/\s*\((?:sumber|rujukan|source|citation)[^)]*\)/gi, '')
     .replace(/^\s*(?:sumber|rujukan|source|citation)\s*:\s*.*$/gim, '')
@@ -161,16 +175,21 @@ function stripInlineCitations(value) {
     .trim();
 }
 async function generateWithLLM(query, hits) {
+  // LLM hanya menerima context yang telah lolos retrieval; prompt melarang
+  // penggunaan pengetahuan di luar dokumen.
   if (!process.env.LITELLM_BASE_URL && !process.env.LITELLM_API_KEY) return null;
   const context = hits.map((hit) => `[${hit.source}, halaman ${hit.page || 'tidak diketahui'}, bagian ${hit.chunk}] ${hit.content}`).join('\n');
   return chat([{ role: 'system', content: 'Jawab hanya berdasarkan CONTEXT dan gunakan bahasa Indonesia. Jika informasi tidak ada di CONTEXT, jawab tepat: "Informasi tersebut tidak ditemukan dalam dokumen yang tersedia." Jangan mengarang atau memakai pengetahuan luar. Untuk dokumen OCR SBP, bagian berjudul "HASIL KOREKSI BERBASIS PENELUSURAN RESMI" adalah sumber prioritas; jika angka atau detail OCR mentah bertentangan dengannya, gunakan bagian koreksi resmi. Jika detail hanya berasal dari OCR dan belum terverifikasi, nyatakan bahwa detail tersebut belum terverifikasi. Jangan menulis nama file, nomor halaman, bagian, URL, atau citation di badan jawaban; citation terstruktur akan ditampilkan terpisah pada footprint sumber.' }, { role: 'user', content: `Pertanyaan: ${query}\n\nCONTEXT:\n${context}` }]);
 }
 async function ensureIndex() {
+  // Memuat snapshot index; jika belum ada, jalankan indexer sebelum server start.
   try { records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || []; } catch { await new Promise((resolve, reject) => { const child = spawn(process.execPath, [path.join(root, 'scripts', 'index.js')], { stdio: 'inherit' }); child.on('close', (code) => code ? reject(new Error('Indexing failed')) : resolve()); }); records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || []; }
 }
 async function json(res, status, body) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(body)); }
 async function body(req) { let data = ''; for await (const part of req) data += part; return JSON.parse(data || '{}'); }
 async function handler(req, res) {
+  // Router minimal tanpa framework: CORS, rate limit, endpoint API, dan file
+  // static frontend ditangani dalam satu request handler.
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); return res.end(); }
   if (url.pathname.startsWith('/api/') && req.method !== 'OPTIONS') {
