@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS rag.chunks (
   content text NOT NULL,
   content_hash char(64) NOT NULL,
   token_count integer,
-  embedding vector,
+  embedding vector(384),
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (document_id, chunk_no),
@@ -54,6 +54,18 @@ CREATE TABLE IF NOT EXISTS rag.ingestion_runs (
 
 CREATE INDEX IF NOT EXISTS chunks_document_idx ON rag.chunks (document_id, chunk_no);
 CREATE INDEX IF NOT EXISTS chunks_fts_idx ON rag.chunks USING gin (to_tsvector('simple', content));
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_attribute
+    WHERE attrelid = 'rag.chunks'::regclass AND attname = 'embedding'
+      AND atttypmod = -1
+  ) THEN
+    ALTER TABLE rag.chunks ALTER COLUMN embedding TYPE vector(384)
+      USING CASE WHEN embedding IS NULL THEN NULL ELSE embedding::vector(384) END;
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS chunks_embedding_hnsw_idx ON rag.chunks USING hnsw (embedding vector_cosine_ops) WHERE embedding IS NOT NULL;
 CREATE INDEX IF NOT EXISTS documents_selection_idx ON rag.documents (selection_code, selection_year) WHERE is_active;
 
 INSERT INTO rag.schema_migrations(version)

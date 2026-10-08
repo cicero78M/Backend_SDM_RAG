@@ -2,7 +2,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
-const { embeddings } = require('../src/litellm');
+const { MODEL, DIMENSIONS, embed } = require('../src/embedding');
 
 const root = path.resolve(__dirname, '..');
 const knowledgeDir = path.join(root, 'data', 'knowledge');
@@ -15,6 +15,11 @@ const defaultDocxSources = [
 ];
 function clean(text) { return String(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim(); }
 function pageFromText(text) { const match = String(text).match(/(?:^|\s)-\s*(\d{1,3})\s*-\s/); return match ? Number(match[1]) : null; }
+function sourceMetadata(source) {
+  if (/Terverifikasi/i.test(source)) return { documentType: 'selection_announcement', authority: 'verified_original', authorityRank: 1 };
+  if (/Breakdown_Seleksi/i.test(source)) return { documentType: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authorityRank: 0.96 };
+  return { documentType: 'normative_regulation', authority: 'verified_regulation', authorityRank: 0.98 };
+}
 function chunks(text, size = 900, overlap = 150) {
   const words = clean(text).split(' '); const result = [];
   for (let i = 0; i < words.length; i += size - overlap) {
@@ -39,24 +44,24 @@ async function main() {
     else if (/\.docx$/i.test(name)) text = (await mammoth.extractRawText({ buffer })).value;
     else text = buffer.toString('utf8');
     const pieces = chunks(text);
-    pieces.forEach((piece, index) => records.push({ id: `${name}:${index + 1}`, source: name, chunk: index + 1, page: piece.page, content: piece.content }));
+    const source = sourceMetadata(name);
+    pieces.forEach((piece, index) => records.push({ id: `${name}:${index + 1}`, source: name, ...source, chunk: index + 1, page: piece.page, content: piece.content }));
     console.log(`${name}: ${pieces.length} chunks`);
   }
-  let embeddingProvider = 'none';
-  // GitHub Copilot is used for chat; embeddings are opt-in because Copilot
-  // accounts do not necessarily expose an embeddings model.
-  if (process.env.LITELLM_EMBEDDING_MODEL && (process.env.LITELLM_BASE_URL || process.env.LITELLM_API_KEY)) {
-    try {
-      for (let start = 0; start < records.length; start += 32) {
-        const batch = records.slice(start, start + 32);
-        const vectors = await embeddings(batch.map((record) => record.content));
-        vectors.forEach((vector, offset) => { records[start + offset].embedding = vector; });
-      }
-      embeddingProvider = 'litellm';
-      console.log(`Generated ${records.filter((record) => record.embedding).length} LiteLLM embeddings`);
-    } catch (error) { console.warn(`LiteLLM embeddings unavailable; using lexical fallback: ${error.message}`); }
+  let embeddingProvider = 'local-transformers';
+  try {
+    for (let start = 0; start < records.length; start += 16) {
+      const batch = records.slice(start, start + 16);
+      const vectors = await embed(batch.map((record) => record.content));
+      vectors.forEach((vector, offset) => { records[start + offset].embedding = vector; });
+      console.log(`Embedded ${Math.min(start + batch.length, records.length)}/${records.length}`);
+    }
+    console.log(`Generated ${records.filter((record) => record.embedding).length} ${MODEL} embeddings (${DIMENSIONS}d)`);
+  } catch (error) {
+    embeddingProvider = 'lexical-fallback';
+    console.warn(`Local embeddings unavailable; using lexical fallback: ${error.message}`);
   }
-  await fs.writeFile(output, JSON.stringify({ generatedAt: new Date().toISOString(), embeddingProvider, records }, null, 2));
+  await fs.writeFile(output, JSON.stringify({ generatedAt: new Date().toISOString(), embeddingProvider, embeddingModel: embeddingProvider === 'local-transformers' ? MODEL : null, embeddingDimensions: embeddingProvider === 'local-transformers' ? DIMENSIONS : null, records }, null, 2));
   console.log(`Wrote ${records.length} chunks to ${output}`);
 }
 main().catch((error) => { console.error(error); process.exitCode = 1; });

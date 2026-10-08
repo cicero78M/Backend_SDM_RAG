@@ -2,21 +2,23 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const { Pool } = require('pg');
+const { MODEL, DIMENSIONS } = require('../src/embedding');
 
 const root = path.resolve(__dirname, '..');
 const indexFile = path.join(root, 'data', 'index.json');
 
 function sha256(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function metadataFor(source) {
-  if (/SBP/i.test(source)) return { document_type: 'selection_announcement', selection_code: 'SBP', selection_year: 2027 };
-  return { document_type: 'regulation' };
+  if (/Terverifikasi/i.test(source)) return { document_type: 'selection_announcement', authority: 'verified_original', authority_rank: 1, selection_code: 'SBP', selection_year: 2027 };
+  if (/Breakdown_Seleksi/i.test(source)) return { document_type: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authority_rank: 0.96, selection_code: /SBP/i.test(source) ? 'SBP' : null, selection_year: /SBP/i.test(source) ? 2027 : null };
+  return { document_type: 'normative_regulation', authority: 'verified_regulation', authority_rank: 0.98 };
 }
 
 async function main() {
   const index = JSON.parse(await fs.readFile(indexFile, 'utf8'));
   const pool = new Pool();
   const client = await pool.connect();
-  const run = await client.query('INSERT INTO rag.ingestion_runs(embedding_model) VALUES ($1) RETURNING id', [process.env.LITELLM_EMBEDDING_MODEL || null]);
+  const run = await client.query('INSERT INTO rag.ingestion_runs(embedding_model, embedding_dimensions, metadata) VALUES ($1,$2,$3::jsonb) RETURNING id', [index.embeddingModel || MODEL, index.embeddingDimensions || DIMENSIONS, JSON.stringify({ provider: index.embeddingProvider || 'unknown' })]);
   try {
     await client.query('BEGIN');
     const sources = new Map();
