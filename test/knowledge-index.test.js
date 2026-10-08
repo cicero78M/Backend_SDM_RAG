@@ -8,6 +8,14 @@ test('knowledge directory excludes the known incorrect SBP PDF', () => {
   assert.equal(fs.existsSync(path.join(knowledgeDir, 'Pengumuman_SBP_TA_2027.pdf')), false);
 });
 
+test('the supplied SBP PDF is archived with its verified source hash', () => {
+  const knowledgeDir = path.join(__dirname, '..', 'data', 'knowledge');
+  const pdfPath = path.join(knowledgeDir, 'Pengumuman_SBP_TA_2027_Benar.pdf');
+  assert.equal(fs.existsSync(pdfPath), true);
+  const crypto = require('node:crypto');
+  assert.equal(crypto.createHash('sha256').update(fs.readFileSync(pdfPath)).digest('hex'), '3b9873c95260121c3d28b70d1ab57cae59272bf913a459754249994957959fce');
+});
+
 test('versioned knowledge index contains the SBP announcement breakdown', () => {
   const indexPath = path.join(__dirname, '..', 'data', 'index.json');
   const index = JSON.parse(fs.readFileSync(indexPath, 'utf8'));
@@ -18,4 +26,6 @@ test('versioned knowledge index contains the SBP announcement breakdown', () => 
   assert.ok(records.some((record) => /Breakdown|MDDP|pangkat|seleksi/i.test(record.content)));
   assert.equal(index.embeddingModel, 'Xenova/multilingual-e5-small');
   assert.equal(index.embeddingDimensions, 384);
+  assert.ok(index.records.some((record) => record.source === 'Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx'));
+  assert.ok(index.records.some((record) => /PENYELENGGARAAN SELEKSI.*SEKOLAH BINTARA/i.test(record.content)));
 });

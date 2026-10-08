@@ -10,12 +10,14 @@ const output = path.join(root, 'data', 'index.json');
 const defaultDocxSources = [
   'Perpol_No_1_Tahun_2025_Diperbaiki.docx',
   'Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx',
+  'Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx',
   'Pengumuman_SBP_TA_2027_Terverifikasi.txt',
   'Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt',
 ];
 function clean(text) { return String(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim(); }
 function pageFromText(text) { const match = String(text).match(/(?:^|\s)-\s*(\d{1,3})\s*-\s/); return match ? Number(match[1]) : null; }
 function sourceMetadata(source) {
+  if (/OCR_Diperbaiki/i.test(source)) return { documentType: 'selection_announcement_ocr', authority: 'ocr_archive', authorityRank: 0.75 };
   if (/Terverifikasi/i.test(source)) return { documentType: 'selection_announcement', authority: 'verified_original', authorityRank: 1 };
   if (/Breakdown_Seleksi/i.test(source)) return { documentType: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authorityRank: 0.96 };
   return { documentType: 'normative_regulation', authority: 'verified_regulation', authorityRank: 0.98 };

@@ -135,14 +135,15 @@ curl -X POST http://localhost:3000/api/chat \
 
 ## Knowledge base resmi
 
-Indexer default menggunakan empat sumber berikut:
+Indexer default menggunakan lima sumber berikut:
 
 1. `Perpol_No_1_Tahun_2025_Diperbaiki.docx` — teks Perpol yang telah diverifikasi terhadap PDF resmi.
 2. `Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx` — breakdown relevansi Perpol untuk kebutuhan seleksi.
-3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
-4. `Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt` — breakdown terstruktur untuk matriks pangkat/MDDP, checklist administrasi, tahapan, dan guardrail jawaban.
+3. `Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx` — konversi searchable dari PDF scan sumber.
+4. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
+5. `Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt` — breakdown terstruktur untuk matriks pangkat/MDDP, checklist administrasi, tahapan, dan guardrail jawaban.
 
-`Pengumuman_SBP_TA_2027.pdf` yang pernah diterima telah diverifikasi salah: PDF tersebut berisi paparan seleksi keahlian basis data/data talenta, bukan pengumuman SBP, sehingga dihapus dari repository. OCR lengkap tetap dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi dan halaman resmi SSDM untuk menghindari angka OCR yang belum terkonfirmasi.
+`Pengumuman_SBP_TA_2027_Benar.pdf` adalah scan 12 halaman yang diberikan pengguna dan disimpan sebagai arsip sumber. Karena PDF tidak memiliki text layer, `Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx` menjadi hasil konversi searchable dan ikut diindeks dengan otoritas lebih rendah; ringkasan terverifikasi tetap lebih otoritatif daripada OCR dan breakdown.
 
 Rujukan resmi SBP TA 2027 yang digunakan: https://e-dikbang.ssdm.polri.go.id/jadwal_seleksi/12
 
