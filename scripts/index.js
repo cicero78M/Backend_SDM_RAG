@@ -14,11 +14,21 @@ const defaultDocxSources = [
   'Pengumuman_SBP_TA_2027_Terverifikasi.txt',
   'Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli_Breakdown.txt',
 ];
+
+// Normalisasi teks dilakukan sebelum chunking agar whitespace/karakter kontrol
+// tidak membuat ukuran chunk dan hasil embedding menjadi tidak konsisten.
 function clean(text) { return String(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim(); }
+
+// Mencoba mengambil nomor halaman dari marker yang ikut terbaca saat ekstraksi.
+// Nilai ini hanya metadata citation; chunking tetap dapat berjalan bila marker
+// halaman tidak ditemukan.
 function pageFromText(text) {
   const match = String(text).match(/(?:HALAMAN\s+|\s-\s*)(\d{1,3})(?:\s+|\s*-\s)/i);
   return match ? Number(match[1]) : null;
 }
+
+// Metadata otoritas dipakai retrieval untuk memberi prioritas pada sumber resmi
+// dibandingkan breakdown/panduan terstruktur. Ini tidak mengubah isi chunk.
 function sourceMetadata(source) {
   if (/Perpol_No_1_Tahun_2025_Breakdown_Terstruktur/i.test(source)) return { documentType: 'regulation_breakdown', authority: 'structured_guidance', authorityRank: 0.97 };
   if (/Perbaikan_Struktur_Asli\.docx/i.test(source)) return { documentType: 'selection_announcement_corrected', authority: 'verified_original_structure', authorityRank: 1 };
@@ -28,6 +38,14 @@ function sourceMetadata(source) {
   if (/Breakdown_Seleksi/i.test(source)) return { documentType: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authorityRank: 0.96 };
   return { documentType: 'normative_regulation', authority: 'verified_regulation', authorityRank: 0.98 };
 }
+
+// Chunking structure-aware + sliding window berbasis kata:
+// 1. Dokumen dipisah lebih dahulu pada marker HALAMAN/TOPIK agar konteks
+//    halaman atau topik tidak tercampur tanpa sengaja.
+// 2. Setiap section dipotong maksimal 900 kata.
+// 3. Window berikutnya dimulai 750 kata setelah window sebelumnya (900 - 150),
+//    sehingga terdapat overlap 150 kata untuk menjaga konteks di batas chunk.
+// 4. Chunk pendek (<= 80 karakter) diabaikan agar index tidak berisi noise.
 function chunks(text, size = 900, overlap = 150) {
   const normalized = String(text).replace(/\u0000/g, '').replace(/\s+/g, ' ').trim();
   const sections = normalized.split(/(?=HALAMAN\s+\d+|TOPIK\s+\d+\s*[—-])/i);
@@ -44,6 +62,9 @@ function chunks(text, size = 900, overlap = 150) {
   return result;
 }
 async function main() {
+  // KNOWLEDGE_FILES dapat diisi untuk memilih sumber secara eksplisit.
+  // Jika tidak diisi, hanya daftar sumber terverifikasi/terstruktur di atas
+  // yang digunakan; file arsip lain tidak otomatis ikut ter-index.
   const available = await fs.readdir(knowledgeDir);
   const requested = process.env.KNOWLEDGE_FILES
     ? process.env.KNOWLEDGE_FILES.split(',').map((name) => name.trim()).filter(Boolean)
@@ -54,16 +75,25 @@ async function main() {
   for (const name of files) {
     const buffer = await fs.readFile(path.join(knowledgeDir, name));
     let text;
+
+    // Ekstraksi disesuaikan dengan format sumber. Hasil akhirnya selalu teks
+    // mentah yang diproses oleh fungsi chunks().
     if (/\.pdf$/i.test(name)) text = (await pdfParse(buffer)).text;
     else if (/\.docx$/i.test(name)) text = (await mammoth.extractRawText({ buffer })).value;
     else text = buffer.toString('utf8');
     const pieces = chunks(text);
     const source = sourceMetadata(name);
+
+    // Setiap chunk menyimpan identitas sumber dan metadata citation sehingga
+    // hasil retrieval dapat ditelusuri kembali ke dokumen asal.
     pieces.forEach((piece, index) => records.push({ id: `${name}:${index + 1}`, source: name, ...source, chunk: index + 1, page: piece.page, content: piece.content }));
     console.log(`${name}: ${pieces.length} chunks`);
   }
   let embeddingProvider = 'local-transformers';
   try {
+    // Embedding dibuat batch 16 chunk agar penggunaan memori lebih terkendali.
+    // embed() menambahkan prefix E5 passage:, melakukan mean pooling, dan
+    // menormalisasi vector 384 dimensi sebelum disimpan ke index.
     for (let start = 0; start < records.length; start += 16) {
       const batch = records.slice(start, start + 16);
       const vectors = await embed(batch.map((record) => record.content));
@@ -72,9 +102,13 @@ async function main() {
     }
     console.log(`Generated ${records.filter((record) => record.embedding).length} ${MODEL} embeddings (${DIMENSIONS}d)`);
   } catch (error) {
+    // Index tetap dapat dipakai untuk lexical retrieval bila model embedding
+    // lokal gagal dimuat; status provider dicatat agar fallback terlihat.
     embeddingProvider = 'lexical-fallback';
     console.warn(`Local embeddings unavailable; using lexical fallback: ${error.message}`);
   }
+  // Snapshot index menyimpan konfigurasi embedding yang menghasilkan records,
+  // sehingga dimensi/model dapat diaudit saat index dimuat kembali.
   await fs.writeFile(output, JSON.stringify({ generatedAt: new Date().toISOString(), embeddingProvider, embeddingModel: embeddingProvider === 'local-transformers' ? MODEL : null, embeddingDimensions: embeddingProvider === 'local-transformers' ? DIMENSIONS : null, records }, null, 2));
   console.log(`Wrote ${records.length} chunks to ${output}`);
 }
