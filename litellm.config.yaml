@@ -1,12 +1,10 @@
 model_list:
-  - model_name: gemini-rag
+  - model_name: copilot-rag
     litellm_params:
-      model: gemini/gemini-2.5-flash
-      api_key: os.environ/GEMINI_API_KEY
-  - model_name: gemini-embedding
-    litellm_params:
-      model: gemini/text-embedding-004
-      api_key: os.environ/GEMINI_API_KEY
+      # Authenticator().get_access_token() supplies the GitHub Copilot session.
+      # Override with LITELLM_COPILOT_MODEL when the account exposes another
+      # included/zero-multiplier model.
+      model: os.environ/LITELLM_COPILOT_MODEL
 
 general_settings:
   master_key: os.environ/LITELLM_MASTER_KEY

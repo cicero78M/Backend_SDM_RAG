@@ -1,6 +1,6 @@
-# Backend SDM RAG — LiteLLM + Gemini
+# Backend SDM RAG — LiteLLM + GitHub Copilot
 
-Backend REST untuk prototype SDM RAG. Backend melakukan ingest PDF/DOCX/TXT/MD, chunking, retrieval, jawaban extractive yang aman, sitasi sumber, dan generasi jawaban melalui LiteLLM + Gemini.
+Backend REST untuk prototype SDM RAG. Backend melakukan ingest PDF/DOCX/TXT/MD, chunking, retrieval, jawaban extractive yang aman, sitasi sumber, dan generasi jawaban melalui LiteLLM + GitHub Copilot.
 
 ## Tujuan dan arsitektur
 
@@ -8,7 +8,7 @@ Prototype ini menjawab pertanyaan berdasarkan knowledge base dokumen SDM Polri, 
 
 ```text
 PDF/DOCX resmi → ekstraksi teks → chunking → index retrieval
-Pertanyaan → retrieval top-k → context + sumber → LiteLLM → Gemini → jawaban
+Pertanyaan → retrieval top-k → context + sumber → LiteLLM → GitHub Copilot → jawaban
 ```
 
 Implementasi retrieval saat ini bersifat deterministik dan mudah diaudit. Chunk yang dipakai dikirim sebagai context ke LLM, sehingga jawaban dapat menampilkan sumber dokumen dan nomor chunk.
@@ -51,30 +51,38 @@ DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalan
 
 Indexer tidak memakai `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.pdf` secara default karena keduanya merupakan salinan sumber Perpol yang dapat menggandakan hasil retrieval. Sumber dapat dipilih eksplisit dengan `KNOWLEDGE_FILES`.
 
-## LLM LiteLLM + Gemini
+## LLM LiteLLM + GitHub Copilot
 
-Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model; backend tidak memanggil Gemini SDK secara langsung. Jalankan proxy dengan Docker:
+Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model; backend tidak memanggil SDK provider secara langsung. Autentikasi GitHub Copilot dilakukan sekali pada host yang menjalankan LiteLLM:
 
 ```bash
-export GEMINI_API_KEY='isi-di-shell-atau-secret-manager'
+python3 -c "from litellm.llms.github_copilot.authenticator import Authenticator; Authenticator().get_access_token()"
+```
+
+Selesaikan device flow GitHub. Jangan menyalin device code atau token ke repository/chat. Jalankan proxy:
+
+```bash
+export LITELLM_MASTER_KEY='sk-sdm-rag-local'
+# Model included/0x yang tersedia pada akun dapat dioverride di sini.
+export LITELLM_COPILOT_MODEL='github_copilot/gpt-4o-mini'
 docker compose up -d litellm
 export LITELLM_BASE_URL=http://localhost:4000/v1
-export LITELLM_MODEL=gemini-rag
-export LITELLM_API_KEY="${LITELLM_MASTER_KEY:-sk-sdm-rag-local}"
+export LITELLM_MODEL=copilot-rag
+export LITELLM_API_KEY="$LITELLM_MASTER_KEY"
 npm start
 ```
 
-`LITELLM_API_KEY`/`GEMINI_API_KEY` tidak pernah disimpan ke repository. Jika proxy atau key tidak tersedia, backend otomatis memakai jawaban extractive lokal dan tidak gagal total.
+Compose memasang cache autentikasi LiteLLM host ke container secara read-only. Jika cache berada di lokasi lain, set `LITELLM_AUTH_DIR` sebelum `docker compose up`. `LITELLM_API_KEY` dan token Copilot tidak pernah disimpan ke repository. Jika proxy atau autentikasi tidak tersedia, backend otomatis memakai jawaban extractive lokal dan tidak gagal total.
 
 Alur runtime:
 
 ```text
 Pertanyaan → retrieval knowledge base → top-k context + citation
-          → LiteLLM OpenAI-compatible API → Gemini
+          → LiteLLM OpenAI-compatible API → GitHub Copilot
           → jawaban Bahasa Indonesia + sumber
 ```
 
-Indexing mencoba membuat embedding melalui endpoint OpenAI-compatible LiteLLM (`/v1/embeddings`) dengan model `gemini-embedding`. Jika proxy belum aktif, index tetap dibuat dan retrieval otomatis turun ke lexical fallback yang dapat diaudit. Tidak ada pemanggilan Ollama di backend.
+Embedding hanya dibuat jika `LITELLM_EMBEDDING_MODEL` dikonfigurasi eksplisit. GitHub Copilot dipakai untuk chat dan tidak diasumsikan menyediakan endpoint embedding; tanpa embedding, retrieval lexical tetap berjalan dan dapat diaudit. Tidak ada pemanggilan Ollama di backend.
 
 ## Endpoint aplikasi
 

@@ -1,8 +1,8 @@
 const config = () => ({
   baseUrl: (process.env.LITELLM_BASE_URL || 'http://localhost:4000/v1').replace(/\/$/, ''),
   apiKey: process.env.LITELLM_API_KEY || process.env.LITELLM_MASTER_KEY || '',
-  chatModel: process.env.LITELLM_MODEL || 'gemini-rag',
-  embeddingModel: process.env.LITELLM_EMBEDDING_MODEL || 'gemini-embedding',
+  chatModel: process.env.LITELLM_MODEL || 'copilot-rag',
+  embeddingModel: process.env.LITELLM_EMBEDDING_MODEL || null,
 });
 
 async function request(endpoint, payload) {
@@ -28,6 +28,7 @@ async function chat(messages, options = {}) {
 
 async function embeddings(inputs, options = {}) {
   const settings = config();
+  if (!options.model && !settings.embeddingModel) throw new Error('LiteLLM embedding model is not configured');
   const data = await request('embeddings', {
     model: options.model || settings.embeddingModel,
     input: inputs,

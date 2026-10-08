@@ -4,8 +4,8 @@ const { config } = require('../src/litellm');
 
 test('LiteLLM adapter defaults to chat and embedding aliases', () => {
   const settings = config();
-  assert.equal(settings.chatModel, 'gemini-rag');
-  assert.equal(settings.embeddingModel, 'gemini-embedding');
+  assert.equal(settings.chatModel, 'copilot-rag');
+  assert.equal(settings.embeddingModel, null);
   assert.match(settings.baseUrl, /localhost:4000\/v1$/);
 });
 

@@ -42,7 +42,9 @@ async function main() {
     console.log(`${name}: ${pieces.length} chunks`);
   }
   let embeddingProvider = 'none';
-  if (process.env.LITELLM_BASE_URL || process.env.LITELLM_API_KEY || process.env.LITELLM_EMBEDDING_MODEL) {
+  // GitHub Copilot is used for chat; embeddings are opt-in because Copilot
+  // accounts do not necessarily expose an embeddings model.
+  if (process.env.LITELLM_EMBEDDING_MODEL && (process.env.LITELLM_BASE_URL || process.env.LITELLM_API_KEY)) {
     try {
       for (let start = 0; start < records.length; start += 32) {
         const batch = records.slice(start, start + 32);

@@ -5,7 +5,10 @@ services:
     ports:
       - "4000:4000"
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in your shell}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-sdm-rag-local}
+      LITELLM_COPILOT_MODEL: ${LITELLM_COPILOT_MODEL:-github_copilot/gpt-4o-mini}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
+      # The device-flow token created by LiteLLM on the host is read-only in
+      # the proxy container. Set LITELLM_AUTH_DIR if the cache is elsewhere.
+      - ${LITELLM_AUTH_DIR:-${HOME}/.config/litellm}:/root/.config/litellm:ro
