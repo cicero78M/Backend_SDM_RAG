@@ -11,4 +11,5 @@ services:
       - ./litellm.config.yaml:/app/config.yaml:ro
       # The device-flow token created by LiteLLM on the host is read-only in
       # the proxy container. Set LITELLM_AUTH_DIR if the cache is elsewhere.
-      - ${LITELLM_AUTH_DIR:-${HOME}/.config/litellm}:/root/.config/litellm:ro
+      # Compose v1 does not support nested ${HOME} interpolation.
+      - ${LITELLM_AUTH_DIR:-/home/cicero/.config/litellm}:/root/.config/litellm:ro
