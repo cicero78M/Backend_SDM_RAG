@@ -4,9 +4,10 @@ Indexer default menggunakan tiga dokumen knowledge base:
 
 1. `Perpol_No_1_Tahun_2025_Diperbaiki.docx` — teks Perpol yang telah diverifikasi terhadap PDF resmi.
 2. `Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx` — breakdown relevansi Perpol untuk kebutuhan seleksi.
-3. `Pengumuman_SBP_TA_2027.pdf` — pengumuman seleksi SBP T.A. 2027, termasuk persyaratan, tahapan, penilaian, dan jadwal.
+3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan terverifikasi pengumuman seleksi SBP T.A. 2027 untuk sumber jawaban utama RAG.
+4. `Pengumuman_SBP_TA_2027_OCR_Diperbaiki.docx` — dokumen kerja OCR untuk arsip/verifikasi, bukan sumber default karena mengandung teks OCR yang dapat terbaca keliru.
 
-DOCX dibaca dengan parser `mammoth`, PDF dengan `pdf-parse`, kemudian seluruh isi dipecah menjadi chunk dan disimpan ke `data/index.json`. Salinan lama `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.pdf` tidak diindeks secara default agar tidak terjadi duplikasi sumber.
+DOCX dibaca dengan parser `mammoth`, PDF dengan `pdf-parse`, kemudian seluruh isi dipecah menjadi chunk dan disimpan ke `data/index.json`. Salinan lama Perpol dan PDF bernama `Pengumuman_SBP_TA_2027.pdf` tidak diindeks secara default karena isinya bukan pengumuman SBP.
 
 Untuk memilih file lain secara eksplisit:
 
