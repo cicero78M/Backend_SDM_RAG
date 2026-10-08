@@ -1,6 +1,6 @@
-# Backend SDM RAG — LiteLLM + GitHub Copilot
+# Backend SDM RAG — LiteLLM
 
-Backend REST untuk prototype SDM RAG. Backend melakukan ingest PDF/DOCX/TXT/MD, chunking, retrieval, jawaban extractive yang aman, sitasi sumber, dan generasi jawaban melalui LiteLLM + GitHub Copilot.
+Backend REST untuk SDM RAG. Backend melakukan ingest PDF/DOCX/TXT/MD, chunking, retrieval, jawaban extractive yang aman, sitasi sumber, dan generasi jawaban melalui LiteLLM.
 
 ## Tujuan dan arsitektur
 
@@ -8,10 +8,10 @@ Prototype ini menjawab pertanyaan berdasarkan knowledge base dokumen SDM Polri, 
 
 ```text
 PDF/DOCX resmi → ekstraksi teks → chunking → index retrieval
-Pertanyaan → retrieval top-k → context + sumber → LiteLLM → GitHub Copilot → jawaban
+Pertanyaan → retrieval top-k → context + sumber → LiteLLM → jawaban
 ```
 
-Implementasi retrieval saat ini bersifat deterministik dan mudah diaudit. Chunk yang dipakai dikirim sebagai context ke LLM, sehingga jawaban dapat menampilkan sumber dokumen dan nomor chunk.
+Implementasi retrieval bersifat deterministik dan mudah diaudit. Chunk yang dipakai dikirim sebagai context ke LLM, sehingga jawaban dapat menampilkan sumber dokumen dan nomor chunk. Index JSON tetap menjadi fallback lokal; schema PostgreSQL/pgvector disiapkan sebagai penyimpanan persisten.
 
 ## Struktur utama
 
@@ -19,6 +19,8 @@ Implementasi retrieval saat ini bersifat deterministik dan mudah diaudit. Chunk 
 - `scripts/index.js` — ekstraksi PDF/DOCX dan pembuatan chunk
 - `data/knowledge/` — dokumen sumber resmi
 - `data/index.json` — index hasil generate lokal, tidak disimpan ke Git
+- `db/migrations/001_rag_pgvector.sql` — migration additive untuk schema `rag`
+- `scripts/load-postgres.js` — loader transaksional dari index lokal ke PostgreSQL
 - `test/` — pengujian backend
 
 ## Jalankan
@@ -45,26 +47,20 @@ Indexer default menggunakan tiga sumber berikut:
 
 1. `Perpol_No_1_Tahun_2025_Diperbaiki.docx` — teks Perpol yang telah diverifikasi terhadap PDF resmi.
 2. `Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx` — breakdown relevansi Perpol untuk kebutuhan seleksi.
-3. `Pengumuman_SBP_TA_2027.pdf` — pengumuman seleksi SBP T.A. 2027, termasuk persyaratan, tahapan, penilaian, dan jadwal.
+3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
+
+`Pengumuman_SBP_TA_2027.pdf` adalah arsip dengan isi yang tidak sesuai pengumuman SBP sehingga tidak digunakan oleh indexer default. OCR lengkap juga dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi untuk menghindari angka OCR yang belum terkonfirmasi.
 
 DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen. File index bersifat hasil generate dan tidak disimpan ke Git.
 
 Indexer tidak memakai `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.pdf` secara default karena keduanya merupakan salinan sumber Perpol yang dapat menggandakan hasil retrieval. Sumber dapat dipilih eksplisit dengan `KNOWLEDGE_FILES`.
 
-## LLM LiteLLM + GitHub Copilot
+## LLM melalui LiteLLM
 
-Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model; backend tidak memanggil SDK provider secara langsung. Autentikasi GitHub Copilot dilakukan sekali pada host yang menjalankan LiteLLM:
-
-```bash
-python3 -c "from litellm.llms.github_copilot.authenticator import Authenticator; Authenticator().get_access_token()"
-```
-
-Selesaikan device flow GitHub. Jangan menyalin device code atau token ke repository/chat. Jalankan proxy:
+Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model; backend tidak memanggil SDK provider secara langsung.
 
 ```bash
 export LITELLM_MASTER_KEY='sk-sdm-rag-local'
-# Model included/0x yang tersedia pada akun dapat dioverride di sini.
-export LITELLM_COPILOT_MODEL='github_copilot/gpt-4o-mini'
 docker compose up -d litellm
 export LITELLM_BASE_URL=http://localhost:4000/v1
 export LITELLM_MODEL=copilot-rag
@@ -78,11 +74,11 @@ Alur runtime:
 
 ```text
 Pertanyaan → retrieval knowledge base → top-k context + citation
-          → LiteLLM OpenAI-compatible API → GitHub Copilot
+          → LiteLLM OpenAI-compatible API → model terkonfigurasi
           → jawaban Bahasa Indonesia + sumber
 ```
 
-Embedding hanya dibuat jika `LITELLM_EMBEDDING_MODEL` dikonfigurasi eksplisit. GitHub Copilot dipakai untuk chat dan tidak diasumsikan menyediakan endpoint embedding; tanpa embedding, retrieval lexical tetap berjalan dan dapat diaudit. Tidak ada pemanggilan Ollama di backend.
+Embedding hanya dibuat jika `LITELLM_EMBEDDING_MODEL` dikonfigurasi eksplisit. Tanpa embedding, retrieval lexical tetap berjalan dan dapat diaudit.
 
 ## Endpoint aplikasi
 
@@ -97,6 +93,26 @@ Embedding hanya dibuat jika `LITELLM_EMBEDDING_MODEL` dikonfigurasi eksplisit. G
 
 Retriever hanya meneruskan top-k chunk yang ditemukan ke LiteLLM. System prompt melarang pengetahuan luar dan mewajibkan kalimat “Informasi tersebut tidak ditemukan dalam dokumen yang tersedia.” bila konteks tidak memuat jawaban. Bila LiteLLM tidak tersedia, jawaban extractive lokal dipakai sebagai fallback.
 
+## PostgreSQL dan pgvector
+
+PostgreSQL 14 digunakan sebagai target penyimpanan persisten dengan schema terpisah `rag`, sehingga tabel Merit pada schema `public` tidak diubah. Migration membuat `rag.documents`, `rag.chunks`, `rag.ingestion_runs`, full-text index, dan metadata seleksi (`selection_code`, `selection_year`). Kolom `rag.chunks.embedding` menggunakan tipe vector tanpa dimensi untuk sementara; index HNSW/IVFFlat baru ditambahkan setelah model embedding dan dimensinya ditetapkan secara final.
+
+Jalankan migration sebagai owner/admin database:
+
+```bash
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres \\
+  < db/migrations/001_rag_pgvector.sql
+```
+
+Setelah index lokal dibangun dan parameter `DATABASE_URL`/`PG*` menunjuk ke database dengan hak tulis schema `rag`, muat data secara transaksional:
+
+```bash
+npm run index
+npm run db:load
+```
+
+Role aplikasi `user_personel` hanya diberi `USAGE` pada schema dan `SELECT` pada tabel RAG. Loader sebaiknya dijalankan oleh role ingestion/admin terpisah agar endpoint publik tidak memiliki hak tulis database.
+
 ## Pengujian RAG
 
 ```bash
@@ -108,6 +124,9 @@ curl -X POST http://localhost:3000/api/chat \
   -d '{"question":"Apa saja unsur Faktor Generik?","topK":5}'
 ```
 
-## Keterbatasan prototype
+## Status implementasi dan audit
 
-Versi ini menyimpan index dan embedding pada `data/index.json` agar dapat dijalankan tanpa database tambahan. PostgreSQL/pgvector dapat menjadi backend penyimpanan produksi berikutnya; kontrak API retrieval sudah memisahkan metadata sumber, halaman, skor leksikal, dan skor semantic.
+- Backend aktif tetap kompatibel dengan index JSON untuk deployment yang sudah berjalan.
+- Migration PostgreSQL/pgvector bersifat additive dan dapat dijalankan berulang kali tanpa menghapus tabel atau data Merit.
+- Loader menyimpan metadata `selection_code` dan `selection_year` sehingga dokumen kebutuhan seleksi dapat difilter tanpa mencampur sumber Perpol.
+- Retrieval semantic belum diaktifkan otomatis sebelum model embedding dan dimensinya ditetapkan; fallback lexical tetap tersedia dan dapat diaudit.
