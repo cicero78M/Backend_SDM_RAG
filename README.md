@@ -43,13 +43,16 @@ curl -X POST http://localhost:3000/api/chat \
 
 ## Knowledge base resmi
 
-Indexer default menggunakan tiga sumber berikut:
+Indexer default menggunakan empat sumber berikut:
 
 1. `Perpol_No_1_Tahun_2025_Diperbaiki.docx` — teks Perpol yang telah diverifikasi terhadap PDF resmi.
 2. `Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx` — breakdown relevansi Perpol untuk kebutuhan seleksi.
 3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
+4. `Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt` — breakdown terstruktur untuk matriks pangkat/MDDP, checklist administrasi, tahapan, dan guardrail jawaban.
 
 `Pengumuman_SBP_TA_2027.pdf` adalah arsip dengan isi yang tidak sesuai pengumuman SBP sehingga tidak digunakan oleh indexer default. OCR lengkap juga dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi untuk menghindari angka OCR yang belum terkonfirmasi.
+
+Sumber terverifikasi tetap memiliki prioritas otoritatif. Breakdown SBP hanya membantu retrieval dan format jawaban; ia tidak boleh menambah persyaratan atau tanggal yang tidak ada pada sumber resmi.
 
 DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen. File index bersifat hasil generate dan tidak disimpan ke Git.
 

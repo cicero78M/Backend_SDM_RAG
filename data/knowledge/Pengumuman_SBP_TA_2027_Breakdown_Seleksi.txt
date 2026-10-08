@@ -1,0 +1,52 @@
+BREAKDOWN TERSTRUKTUR PENGUMUMAN SELEKSI SBP T.A. 2027
+
+STATUS DAN PRIORITAS SUMBER
+Dokumen turunan ini dibuat untuk meningkatkan retrieval dan konsistensi jawaban. Sumber otoritatif tetap Pengumuman_SBP_TA_2027_Terverifikasi.txt dan bahan pengumuman resmi SSDM Polri. Breakdown tidak boleh menambah syarat, tanggal, atau norma kelulusan yang tidak tertulis pada sumber utama.
+Rujukan sumber: https://e-dikbang.ssdm.polri.go.id/jadwal_seleksi/12
+
+IDENTITAS SELEKSI
+Nama: Pendidikan Sekolah Bintara Polisi (SBP) dari Tamtama ke Bintara.
+Tahun anggaran: 2027.
+Lama pendidikan yang tercantum: 2 bulan.
+Tempat pendaftaran dan seleksi: Panda dan Subpanpus.
+
+MATRIKS PANGKAT DAN MDDP
+1. Abripda: MDDP 0 tahun.
+2. Bharaka lulusan SMA: MDDP 2 tahun.
+3. Bharaka lulusan D-3: MDDP 1 tahun.
+4. Bharaka lulusan D-IV/S-1: MDDP 0 tahun.
+5. Bharatu lulusan S-2: MDDP 4 tahun.
+6. Bharatu lulusan S-3: MDDP 3 tahun.
+Catatan: Jawaban tentang kelayakan individu harus mencocokkan pangkat, MDDP, dan pendidikan secara bersamaan.
+
+CHECKLIST PERSYARATAN ADMINISTRASI
+1. Ijazah S-3, S-2, S-1, D-IV, D-3, atau SMA sesuai kategori peserta.
+2. Untuk ijazah perguruan tinggi: perguruan tinggi terdaftar pada PDDikti dan program studi terakreditasi BAN-PT.
+3. Usulan dari pimpinan yang berwenang.
+4. Surat Keterangan Hasil Penelitian (SKHP).
+5. Pernyataan siap ditempatkan di seluruh wilayah Negara Kesatuan Republik Indonesia.
+6. Mengikuti dan lulus seluruh tahapan seleksi pada tingkat Panda/Subpanpus dan Panpus.
+
+TAHAPAN SELEKSI
+1. Verifikasi administrasi.
+2. Verifikasi penilaian 13 komponen individu personel Polri.
+3. Pemeriksaan kesehatan.
+4. Tes Kesamaptaan Jasmani dan Bela Diri Polri.
+5. Tes Psikologi.
+6. Tes Pengetahuan Kepolisian (TPK).
+7. Tes Keterampilan Komputer (TKK).
+8. Verifikasi administrasi tingkat pusat.
+
+JADWAL DAN BATAS WAKTU
+Tanggal dokumen yang terbaca: 14 September 2026. Rincian tanggal setiap tahap berasal dari OCR scan dan belum dianggap final. Untuk pertanyaan jadwal rinci, jawaban wajib mengarahkan pengguna ke pengumuman resmi atau panitia sebelum tanggal digunakan sebagai informasi final.
+
+ATURAN JAWABAN RAG
+- Untuk syarat peserta, gabungkan matriks pangkat/MDDP dengan kategori pendidikan.
+- Untuk checklist dokumen, tampilkan persyaratan administrasi dan bedakan syarat wajib dari catatan verifikasi.
+- Untuk tahapan, tampilkan urutan tahapan di atas dan jangan menambahkan jenis tes lain.
+- Untuk jadwal rinci, nyatakan belum terverifikasi jika tanggal tidak tersedia pada sumber resmi yang sedang digunakan.
+- Jika pertanyaan meminta nilai/bobot kelulusan, jangan mengambil bobot Perpol SMK. Nyatakan bahwa pengumuman/rambu teknis yang tersedia harus menjadi rujukan.
+- Jika informasi tidak ada pada sumber, jawab bahwa informasi tersebut tidak ditemukan dalam dokumen yang tersedia.
+
+BATASAN DOKUMEN
+Breakdown ini adalah indeks bantu dan checklist operasional. Ia tidak menggantikan pengumuman asli, petunjuk teknis, keputusan panitia, atau konfirmasi resmi SSDM Polri.

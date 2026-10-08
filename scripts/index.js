@@ -11,6 +11,7 @@ const defaultDocxSources = [
   'Perpol_No_1_Tahun_2025_Diperbaiki.docx',
   'Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx',
   'Pengumuman_SBP_TA_2027_Terverifikasi.txt',
+  'Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt',
 ];
 function clean(text) { return String(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim(); }
 function pageFromText(text) { const match = String(text).match(/(?:^|\s)-\s*(\d{1,3})\s*-\s/); return match ? Number(match[1]) : null; }
