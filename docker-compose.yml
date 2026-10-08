@@ -5,7 +5,11 @@ services:
     ports:
       - "4000:4000"
     environment:
-      GEMINI_API_KEY: ${GEMINI_API_KEY:?set GEMINI_API_KEY in your shell}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-sdm-rag-local}
+      LITELLM_COPILOT_MODEL: ${LITELLM_COPILOT_MODEL:-github_copilot/gpt-4o-mini}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
+      # LiteLLM refreshes/writes api-key.json during provider initialization.
+      # Set LITELLM_AUTH_DIR if the cache is elsewhere.
+      # Compose v1 does not support nested ${HOME} interpolation.
+      - ${LITELLM_AUTH_DIR:-/home/cicero/.config/litellm}:/root/.config/litellm:rw
