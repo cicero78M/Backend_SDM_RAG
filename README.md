@@ -38,7 +38,7 @@ Implementasi retrieval bersifat deterministik dan mudah diaudit. Chunk yang dipa
 - `src/server.js` — HTTP API, retrieval, fallback extractive, dan adapter LiteLLM
 - `scripts/index.js` — ekstraksi PDF/DOCX dan pembuatan chunk
 - `data/knowledge/` — dokumen sumber resmi
-- `data/index.json` — index hasil generate lokal, tidak disimpan ke Git
+- `data/index.json` — snapshot index hasil generate yang disimpan ke Git
 - `db/migrations/001_rag_pgvector.sql` — migration additive untuk schema `rag`
 - `scripts/load-postgres.js` — loader transaksional dari index lokal ke PostgreSQL
 - `test/` — pengujian backend
@@ -63,7 +63,7 @@ Backend_SDM_RAG/
 └── test/               # unit/configuration tests
 ```
 
-`data/index.json` adalah artefak generate lokal dan tidak disimpan ke Git. PostgreSQL menjadi storage production ketika `RAG_DATABASE_URL` atau `DATABASE_URL` tersedia dan health check lulus.
+`data/index.json` adalah snapshot knowledge base yang disimpan ke Git agar clone/deployment membawa sumber yang sama. PostgreSQL menjadi storage production ketika `RAG_DATABASE_URL` atau `DATABASE_URL` tersedia dan health check lulus; index JSON tetap menjadi fallback yang dapat diaudit.
 
 ### Metode ingest dan indexing
 
@@ -146,7 +146,7 @@ Indexer default menggunakan empat sumber berikut:
 
 Sumber terverifikasi tetap memiliki prioritas otoritatif. Breakdown SBP hanya membantu retrieval dan format jawaban; ia tidak boleh menambah persyaratan atau tanggal yang tidak ada pada sumber resmi.
 
-DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen. File index bersifat hasil generate dan tidak disimpan ke Git.
+DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen, lalu commit `data/index.json` bersama perubahan sumber. Test knowledge-base memastikan breakdown SBP tetap tercantum pada snapshot index.
 
 Indexer tidak memakai `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.pdf` secara default karena keduanya merupakan salinan sumber Perpol yang dapat menggandakan hasil retrieval. Sumber dapat dipilih eksplisit dengan `KNOWLEDGE_FILES`.
 
