@@ -36,7 +36,8 @@ async function health() {
              COUNT(*)::integer AS chunks,
              COUNT(embedding)::integer AS embedded_chunks,
              COALESCE(MAX(vector_dims(embedding)), 0)::integer AS dimensions
-      FROM rag.chunks`);
+      FROM rag.chunks c JOIN rag.documents d ON d.id = c.document_id
+      WHERE d.is_active`);
     const row = result.rows[0];
     const ready = Boolean(row.vector_extension) && Number(row.chunks) > 0
       && Number(row.chunks) === Number(row.embedded_chunks) && Number(row.dimensions) === 384;

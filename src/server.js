@@ -11,12 +11,14 @@ const ragDb = require('./rag-db');
 const root = path.resolve(__dirname, '..');
 const indexFile = path.join(root, 'data', 'index.json');
 const stopWords = new Set('yang dan di ke dari untuk dengan atau pada dalam adalah ini itu sebagai akan dapat tidak oleh tentang serta juga bagi agar lebih sudah secara para'.split(' '));
-const domainTerms = ['sbp', 'sekolah', 'bintara', 'tamtama', 'seleksi', 'pendidikan', 'persyaratan', 'administrasi', 'tahapan', 'penilaian', 'komponen', 'faktor', 'pangkat', 'masa dinas', 'mddp', 'perpol', 'polisi', 'panda', 'panpus', 'subpanpus', 'ijazah', 'pddikti', 'ban-pt'];
+const domainTerms = ['sbp', 'sekolah', 'bintara', 'tamtama', 'seleksi', 'pendidikan', 'persyaratan', 'administrasi', 'tahapan', 'penilaian', 'komponen', 'faktor', 'pangkat', 'masa dinas', 'mddp', 'perpol', 'perkap', 'polisi', 'panda', 'panpus', 'subpanpus', 'ijazah', 'pddikti', 'ban-pt', 'dasar hukum', 'landasan hukum', 'undang-undang', 'keputusan kapolri', 'dokumen', 'berkas', 'bko', 'jadwal', 'biaya', 'integritas', 'kuota', 'panitia', 'kesehatan', 'psikologi', 'komputer', 'hukum', 'registrasi', 'sumpah', 'pakta', 'pengawasan', 'kelulusan', 'sponsor', 'konflik kepentingan', 'ayd', 'pp', 'rk', 'kontrak kerja', 'tugas lain', 'evaluasi kinerja', 'sipk', 'jam kerja', 'faktor spesifik', 'faktor generik'];
 const expansions = new Map([
   ['kinerja', ['penilaian', 'prestasi', 'sasaran', 'perilaku']],
   ['sbp', ['sekolah', 'bintara', 'tamtama', 'seleksi', 'persyaratan']],
   ['pangkat', ['golongan', 'brigadir', 'bripda', 'tamtama']],
   ['syarat', ['persyaratan', 'ketentuan', 'administrasi']],
+  ['hukum', ['dasar', 'landasan', 'undang-undang', 'peraturan', 'perkap', 'perpol', 'keputusan']],
+  ['pendaftaran', ['registrasi', 'administrasi', 'seleksi']],
 ]);
 let records = [];
 const history = [];
@@ -70,7 +72,8 @@ function expandedTokens(query) {
 }
 function inDomain(query) {
   const normalized = String(query).toLowerCase();
-  return domainTerms.some((term) => normalized.includes(term));
+  const metaTerms = ['apa saja yang bisa saya tanyakan', 'pertanyaan apa', 'cakupan knowledge base', 'topik yang tersedia', 'bisa ditanyakan', 'contoh pertanyaan'];
+  return domainTerms.some((term) => normalized.includes(term)) || metaTerms.some((term) => normalized.includes(term));
 }
 function uniqueHits(hits) {
   const seen = new Set();
@@ -119,15 +122,48 @@ function sentences(text) {
 function localAnswer(query, hits) {
   if (!hits.length) return { answer: 'Informasi tersebut tidak ditemukan dalam knowledge base yang tersedia. Silakan ajukan pertanyaan dengan istilah atau topik yang lebih spesifik.', confidence: 'low' };
   const queryTerms = expandedTokens(query);
-  const chosen = hits.flatMap((hit) => sentences(hit.content).map((sentence) => ({ sentence: sentence.trim(), hit, score: score(queryTerms.join(' '), sentence) })))
-    .filter((item) => item.sentence.length > 35).sort((a, b) => b.score - a.score).slice(0, 4);
-  const answer = chosen.length ? chosen.map((item) => item.sentence).join(' ') : hits[0].content;
+  const all = hits.flatMap((hit) => sentences(hit.content).map((sentence) => ({ sentence: sentence.trim(), hit, score: score(queryTerms.join(' '), sentence) })))
+    .filter((item) => item.sentence.length > 35);
+  const legalQuestion = /dasar hukum|landasan hukum|undang-undang|peraturan|perkap|perpol|keputusan kapolri/i.test(String(query));
+  const legal = all.filter((item) => /undang-undang|peraturan|perkap|perpol|keputusan|dasar hukum|landasan hukum/i.test(item.sentence));
+  const exactLegal = all.filter((item) => /Dasar hukum SBP(?:\s|:)/i.test(item.sentence));
+  const exactTopic = /tahap|proses|urutan/i.test(query)
+    ? all.filter((item) => /Tahapan seleksi SBP:/i.test(item.sentence))
+    : /pangkat|mddp|masa dinas/i.test(query)
+      ? all.filter((item) => /Pangkat dan MDDP SBP:/i.test(item.sentence))
+      : /daftar|registrasi|pendaftaran/i.test(query)
+        ? all.filter((item) => /Tata cara pendaftaran SBP:/i.test(item.sentence))
+        : /panpus|panda|subpanpus|panitia/i.test(query)
+          ? all.filter((item) => /Tugas Panpus SBP:/i.test(item.sentence))
+        : [];
+  const topicPattern = /tahap|proses|urutan/i.test(query)
+    ? /tahapan seleksi|verifikasi administrasi.*13 komponen|tes kesamaptaan/i
+    : /pangkat|mddp|masa dinas/i.test(query)
+      ? /pangkat dan mddp|bharaka.*mddp|bharatu.*mddp/i
+      : /daftar|registrasi|pendaftaran/i.test(query)
+        ? /tata cara pendaftaran|registrasi melalui|mengunggah berkas/i
+        : /panpus|panda|subpanpus|panitia/i.test(query)
+          ? /tugas panpus|panitia pusat|menyusun kebijakan seleksi/i
+          : null;
+  const topic = topicPattern ? all.filter((item) => topicPattern.test(item.sentence)) : [];
+  const pool = legalQuestion && exactLegal.length ? exactLegal : exactTopic.length ? exactTopic : topic.length ? topic : (legalQuestion && legal.length ? legal : all);
+  const chosen = pool.sort((a, b) => b.score - a.score).slice(0, legalQuestion ? 8 : topic.length ? 3 : 4);
+  const answer = chosen.length
+    ? chosen.map((item) => item.sentence.replace(/^\s*JAWABAN INTI BERDASARKAN TOPIK\s*/i, '').trim()).join(' ')
+    : hits[0].content;
   return { answer, confidence: hits[0].score > 0.13 ? 'high' : 'medium' };
+}
+function stripInlineCitations(value) {
+  return String(value)
+    .replace(/\s*\((?:sumber|rujukan|source|citation)[^)]*\)/gi, '')
+    .replace(/^\s*(?:sumber|rujukan|source|citation)\s*:\s*.*$/gim, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 async function generateWithLLM(query, hits) {
   if (!process.env.LITELLM_BASE_URL && !process.env.LITELLM_API_KEY) return null;
   const context = hits.map((hit) => `[${hit.source}, halaman ${hit.page || 'tidak diketahui'}, bagian ${hit.chunk}] ${hit.content}`).join('\n');
-  return chat([{ role: 'system', content: 'Jawab hanya berdasarkan CONTEXT dan gunakan bahasa Indonesia. Jika informasi tidak ada di CONTEXT, jawab tepat: "Informasi tersebut tidak ditemukan dalam dokumen yang tersedia." Jangan mengarang atau memakai pengetahuan luar. Untuk dokumen OCR SBP, bagian berjudul "HASIL KOREKSI BERBASIS PENELUSURAN RESMI" adalah sumber prioritas; jika angka atau detail OCR mentah bertentangan dengannya, gunakan bagian koreksi resmi. Jika detail hanya berasal dari OCR dan belum terverifikasi, nyatakan bahwa detail tersebut belum terverifikasi. Sebutkan sumber dan halaman hanya bila memang tersedia di CONTEXT.' }, { role: 'user', content: `Pertanyaan: ${query}\n\nCONTEXT:\n${context}` }]);
+  return chat([{ role: 'system', content: 'Jawab hanya berdasarkan CONTEXT dan gunakan bahasa Indonesia. Jika informasi tidak ada di CONTEXT, jawab tepat: "Informasi tersebut tidak ditemukan dalam dokumen yang tersedia." Jangan mengarang atau memakai pengetahuan luar. Untuk dokumen OCR SBP, bagian berjudul "HASIL KOREKSI BERBASIS PENELUSURAN RESMI" adalah sumber prioritas; jika angka atau detail OCR mentah bertentangan dengannya, gunakan bagian koreksi resmi. Jika detail hanya berasal dari OCR dan belum terverifikasi, nyatakan bahwa detail tersebut belum terverifikasi. Jangan menulis nama file, nomor halaman, bagian, URL, atau citation di badan jawaban; citation terstruktur akan ditampilkan terpisah pada footprint sumber.' }, { role: 'user', content: `Pertanyaan: ${query}\n\nCONTEXT:\n${context}` }]);
 }
 async function ensureIndex() {
   try { records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || []; } catch { await new Promise((resolve, reject) => { const child = spawn(process.execPath, [path.join(root, 'scripts', 'index.js')], { stdio: 'inherit' }); child.on('close', (code) => code ? reject(new Error('Indexing failed')) : resolve()); }); records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || []; }
@@ -185,6 +221,7 @@ async function handler(req, res) {
       let answer = local.answer;
       let provider = 'extractive-fallback';
       try { answer = (await generateWithLLM(question, hits)) || answer; if (answer !== local.answer) provider = 'litellm'; } catch (error) { console.warn(error.message); }
+      answer = stripInlineCitations(answer);
       const sources = hits.map(({ source, chunk, page, score, semantic, authority, documentType, selectionCode, selectionYear }) => ({ source, chunk, page, authority, documentType, selectionCode, selectionYear, score: Number(score.toFixed(3)), semantic: Number((semantic || 0).toFixed(3)) }));
       const result = { question, answer, confidence: local.confidence, provider, sources };
       history.push({ ...result, at: new Date().toISOString() });

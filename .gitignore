@@ -1,4 +1,5 @@
 node_modules/
 .env
-data/index.json
+# The generated index is intentionally versioned so a clone has the same
+# knowledge-base snapshot. Regenerate it with `npm run index` after source changes.
 *.log

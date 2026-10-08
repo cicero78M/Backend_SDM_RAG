@@ -9,23 +9,37 @@ const knowledgeDir = path.join(root, 'data', 'knowledge');
 const output = path.join(root, 'data', 'index.json');
 const defaultDocxSources = [
   'Perpol_No_1_Tahun_2025_Diperbaiki.docx',
-  'Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx',
+  'Perpol_No_1_Tahun_2025_Breakdown_Terstruktur.txt',
+  'Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli.docx',
   'Pengumuman_SBP_TA_2027_Terverifikasi.txt',
-  'Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt',
+  'Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli_Breakdown.txt',
 ];
 function clean(text) { return String(text).replace(/\s+/g, ' ').replace(/\u0000/g, '').trim(); }
-function pageFromText(text) { const match = String(text).match(/(?:^|\s)-\s*(\d{1,3})\s*-\s/); return match ? Number(match[1]) : null; }
+function pageFromText(text) {
+  const match = String(text).match(/(?:HALAMAN\s+|\s-\s*)(\d{1,3})(?:\s+|\s*-\s)/i);
+  return match ? Number(match[1]) : null;
+}
 function sourceMetadata(source) {
+  if (/Perpol_No_1_Tahun_2025_Breakdown_Terstruktur/i.test(source)) return { documentType: 'regulation_breakdown', authority: 'structured_guidance', authorityRank: 0.97 };
+  if (/Perbaikan_Struktur_Asli\.docx/i.test(source)) return { documentType: 'selection_announcement_corrected', authority: 'verified_original_structure', authorityRank: 1 };
+  if (/Perbaikan_Struktur_Asli_Breakdown/i.test(source)) return { documentType: 'selection_announcement_breakdown', authority: 'structured_guidance', authorityRank: 0.97 };
+  if (/OCR_Diperbaiki/i.test(source)) return { documentType: 'selection_announcement_ocr', authority: 'ocr_archive', authorityRank: 0.75 };
   if (/Terverifikasi/i.test(source)) return { documentType: 'selection_announcement', authority: 'verified_original', authorityRank: 1 };
   if (/Breakdown_Seleksi/i.test(source)) return { documentType: /SBP/i.test(source) ? 'selection_announcement_breakdown' : 'selection_guidance', authority: 'structured_guidance', authorityRank: 0.96 };
   return { documentType: 'normative_regulation', authority: 'verified_regulation', authorityRank: 0.98 };
 }
 function chunks(text, size = 900, overlap = 150) {
-  const words = clean(text).split(' '); const result = [];
-  for (let i = 0; i < words.length; i += size - overlap) {
-    const content = words.slice(i, i + size).join(' ').trim();
-    if (content.length > 80) result.push({ content, page: pageFromText(content) });
-    if (i + size >= words.length) break;
+  const normalized = String(text).replace(/\u0000/g, '').replace(/\s+/g, ' ').trim();
+  const sections = normalized.split(/(?=HALAMAN\s+\d+|TOPIK\s+\d+\s*[—-])/i);
+  const result = [];
+  for (const section of sections) {
+    const sectionText = section.trim(); if (!sectionText) continue;
+    const words = clean(sectionText).split(' '); const page = pageFromText(sectionText);
+    for (let i = 0; i < words.length; i += size - overlap) {
+      const content = words.slice(i, i + size).join(' ').trim();
+      if (content.length > 80) result.push({ content, page });
+      if (i + size >= words.length) break;
+    }
   }
   return result;
 }

@@ -38,7 +38,7 @@ Implementasi retrieval bersifat deterministik dan mudah diaudit. Chunk yang dipa
 - `src/server.js` — HTTP API, retrieval, fallback extractive, dan adapter LiteLLM
 - `scripts/index.js` — ekstraksi PDF/DOCX dan pembuatan chunk
 - `data/knowledge/` — dokumen sumber resmi
-- `data/index.json` — index hasil generate lokal, tidak disimpan ke Git
+- `data/index.json` — snapshot index hasil generate yang disimpan ke Git
 - `db/migrations/001_rag_pgvector.sql` — migration additive untuk schema `rag`
 - `scripts/load-postgres.js` — loader transaksional dari index lokal ke PostgreSQL
 - `test/` — pengujian backend
@@ -63,7 +63,7 @@ Backend_SDM_RAG/
 └── test/               # unit/configuration tests
 ```
 
-`data/index.json` adalah artefak generate lokal dan tidak disimpan ke Git. PostgreSQL menjadi storage production ketika `RAG_DATABASE_URL` atau `DATABASE_URL` tersedia dan health check lulus.
+`data/index.json` adalah snapshot knowledge base yang disimpan ke Git agar clone/deployment membawa sumber yang sama. PostgreSQL menjadi storage production ketika `RAG_DATABASE_URL` atau `DATABASE_URL` tersedia dan health check lulus; index JSON tetap menjadi fallback yang dapat diaudit.
 
 ### Metode ingest dan indexing
 
@@ -74,6 +74,136 @@ Backend_SDM_RAG/
 5. Setiap chunk diberi source, nomor chunk, halaman bila terdeteksi, hash konten, dan embedding.
 6. Embedding memakai prefix E5 `passage:`; query memakai prefix `query:`. Model default `Xenova/multilingual-e5-small` menghasilkan vector normalisasi 384 dimensi.
 7. Loader PostgreSQL menggunakan transaksi, menghapus chunk lama per dokumen, lalu memasukkan versi baru ke `rag.documents` dan `rag.chunks`.
+
+### Alur pengolahan knowledge base yang benar
+
+Knowledge base diperlakukan sebagai jalur editorial dan operasional yang berurutan. Setiap tahap harus selesai dan diverifikasi sebelum tahap berikutnya dijalankan.
+
+```text
+Sumber masuk
+  ↓
+Inventarisasi dan hash sumber
+  ↓
+Verifikasi sumber primer/pembanding
+  ↓
+Koreksi dokumen tanpa mengubah fakta yang belum terbukti
+  ↓
+Penataan ulang mengikuti struktur asli dan halaman sumber
+  ↓
+Breakdown topik dan jawaban kanonik
+  ↓
+Normalisasi teks dan metadata otoritas
+  ↓
+Chunking per halaman/topik
+  ↓
+Embedding + index JSON
+  ↓
+Validasi retrieval dan citation
+  ↓
+Load transaksional ke PostgreSQL/pgvector
+  ↓
+Restart/reload runtime produksi
+  ↓
+Uji pertanyaan lintas topik dan monitoring
+```
+
+#### Tahap 1 — Inventarisasi sumber
+
+1. Simpan PDF/DOCX/TXT/MD di `data/knowledge/`.
+2. Catat nama, jenis, tanggal, asal, hash SHA-256, dan status sumber.
+3. Bedakan sumber primer, salinan searchable, ringkasan terverifikasi, dan breakdown bantuan.
+4. Jangan langsung mengindeks dokumen yang belum diketahui asal atau status koreksinya.
+
+#### Tahap 2 — Verifikasi dan hierarki otoritas
+
+1. Gunakan naskah resmi/PDF asli sebagai rujukan utama.
+2. Gunakan portal resmi atau dokumen pembanding untuk memeriksa angka, istilah, pangkat, MDDP, syarat, dan tahapan.
+3. Jika PDF berupa scan, gunakan OCR hanya untuk membantu pembacaan; OCR bukan bukti tunggal.
+4. Jika dua sumber berbeda, simpan konflik tersebut sebagai catatan dan prioritaskan sumber dengan otoritas lebih tinggi.
+5. Jangan memperbaiki angka, tanggal, nomor keputusan, rumus, bobot, atau nama pejabat berdasarkan tebakan.
+
+#### Tahap 3 — Koreksi dan penataan dokumen
+
+1. Perbaiki ejaan, tanda baca, istilah, dan kalimat yang dapat dibuktikan dari konteks.
+2. Pertahankan urutan, judul, nomor bagian, dan pembagian halaman seperti dokumen asli.
+3. Tandai `[belum terverifikasi]` atau catatan audit untuk bagian yang tidak terbaca.
+4. Bedakan `dokumen koreksi berstruktur` dari `salinan identik`; keduanya tidak boleh diberi label yang sama.
+5. Hasil tahap ini untuk SBP adalah `Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli.docx`.
+
+#### Tahap 4 — Breakdown terstruktur
+
+Breakdown harus menjawab pertanyaan berdasarkan topik, bukan hanya merangkum dokumen secara umum. Minimal harus memiliki blok terpisah untuk:
+
+- identitas seleksi, tahun anggaran, lama pendidikan, dan lokasi;
+- dasar hukum;
+- pangkat, pendidikan, dan matriks MDDP;
+- persyaratan administrasi dan dokumen;
+- integritas, larangan, biaya, sponsor, dan konflik kepentingan;
+- penilaian 13 komponen;
+- seluruh urutan tahapan seleksi;
+- tugas Panpus;
+- tugas Panda/Subpanpus;
+- pengawasan, sidang, kelulusan, dan pelaporan;
+- pendaftaran daring, OTP, berkas, dan perbaikan berkas;
+- peserta BKO dan mekanisme Subpanpus;
+- jadwal dan lampiran;
+- batas informasi yang belum terverifikasi.
+
+Setiap blok sebaiknya memuat kalimat jawaban kanonik dengan kata kunci yang lazim dipakai pengguna. Contoh: `dasar hukum penerimaan SBP`, `tugas Panpus`, `dokumen pendaftaran`, `peserta BKO`, dan `jadwal seleksi`. Breakdown SBP yang digunakan adalah `Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli_Breakdown.txt`.
+
+#### Tahap 5 — Normalisasi dan metadata
+
+1. Rapikan whitespace dan buang karakter NUL tanpa menghapus isi substantif.
+2. Pertahankan marker `HALAMAN n` dan `TOPIK n` agar citation dapat mengarah ke halaman/topik.
+3. Simpan metadata `source`, `documentType`, `authority`, `authorityRank`, `selectionCode`, dan `selectionYear`.
+4. Sumber utama SBP berotoritas `verified_original_structure`; breakdown berotoritas `structured_guidance` dan tidak boleh mengalahkan fakta primer.
+5. Dokumen lama yang diganti harus dikeluarkan dari daftar default dan dinonaktifkan di PostgreSQL.
+
+#### Tahap 6 — Chunking dan embedding
+
+1. Pecah dokumen berdasarkan batas halaman/topik terlebih dahulu.
+2. Pecah bagian yang terlalu panjang menjadi chunk dengan overlap agar konteks tidak terputus.
+3. Simpan nomor chunk, halaman, hash konten, dan embedding 384 dimensi.
+4. Gunakan prefix `passage:` untuk dokumen dan `query:` untuk pertanyaan.
+5. Setelah indexing, periksa jumlah chunk, jumlah embedding, dimensi, dan keberadaan sumber utama.
+
+#### Tahap 7 — Validasi retrieval dan jawaban
+
+Uji sekurang-kurangnya pertanyaan berikut sebelum deployment:
+
+1. Apa dasar hukum penerimaan/pendaftaran SBP?
+2. Apa pangkat dan MDDP peserta SBP?
+3. Apa persyaratan administrasi dan dokumen yang harus disiapkan?
+4. Apa penilaian 13 komponen?
+5. Apa seluruh tahapan seleksi?
+6. Apa tugas Panpus?
+7. Apa tugas Panda/Subpanpus?
+8. Bagaimana pendaftaran daring dan OTP?
+9. Bagaimana ketentuan peserta BKO?
+10. Apakah seleksi dipungut biaya?
+11. Apa jadwal seleksi?
+12. Apa informasi yang belum dapat dipastikan dari scan?
+
+Jawaban yang valid harus mengambil konteks yang relevan, menyebut sumber/halaman bila tersedia, dan tidak menggabungkan Perpol penilaian kinerja sebagai norma kelulusan SBP. Pertanyaan yang topiknya ada tetapi detailnya belum terbukti harus menghasilkan jawaban terkalibrasi seperti `tanggal rinci belum terverifikasi`, bukan `informasi tidak ditemukan`. `Informasi tidak ditemukan` hanya boleh digunakan jika retrieval memang tidak menemukan topik tersebut.
+
+#### Tahap 8 — Sinkronisasi PostgreSQL dan runtime produksi
+
+Untuk deployment dengan `RAG_STORAGE=postgres`, urutan yang benar adalah:
+
+```bash
+npm run index
+set -a; . /home/cicero/.openclaw/workspace/Backend_SDM_Test/.env; set +a
+RAG_DATABASE_URL="$DATABASE_URL" npm run db:load
+sudo systemctl restart rag-backend.service
+curl -sS http://127.0.0.1:3001/api/health
+npm test
+```
+
+`db:load` harus memakai URL database secara eksplisit, menjalankan transaksi, memperbarui dokumen yang sama, memasukkan chunk baru, dan menonaktifkan dokumen yang tidak lagi ada pada index. Health production harus menunjukkan sumber baru, jumlah chunk aktif yang sesuai, seluruh embedding tersedia, dan dimensi 384.
+
+#### Tahap 9 — Operasional re-index dan audit berkala
+
+Setiap perubahan sumber wajib diikuti `npm run index`, validasi snapshot, `npm run db:load`, restart/reload service, health check, dan regression test. Audit harus memastikan sumber lama tidak aktif, citation menunjuk ke sumber baru, dan pertanyaan lintas topik tidak lagi jatuh ke jawaban generik. Jangan menganggap re-index JSON selesai sebelum PostgreSQL/runtime produksi juga disinkronkan.
 
 ### Metode retrieval
 
@@ -135,18 +265,21 @@ curl -X POST http://localhost:3000/api/chat \
 
 ## Knowledge base resmi
 
-Indexer default menggunakan empat sumber berikut:
+Indexer default menggunakan lima sumber berikut:
 
 1. `Perpol_No_1_Tahun_2025_Diperbaiki.docx` — teks Perpol yang telah diverifikasi terhadap PDF resmi.
-2. `Perpol_No_1_Tahun_2025_Breakdown_Seleksi.docx` — breakdown relevansi Perpol untuk kebutuhan seleksi.
-3. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
-4. `Pengumuman_SBP_TA_2027_Breakdown_Seleksi.txt` — breakdown terstruktur untuk matriks pangkat/MDDP, checklist administrasi, tahapan, dan guardrail jawaban.
+2. `Perpol_No_1_Tahun_2025_Breakdown_Terstruktur.txt` — breakdown terstruktur Perpol per topik/pasal, dengan pemetaan aman ke kebutuhan seleksi.
+3. `Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli.docx` — sumber utama hasil koreksi yang mengikuti struktur asli PDF 12 halaman.
+4. `Pengumuman_SBP_TA_2027_Terverifikasi.txt` — ringkasan resmi terverifikasi untuk persyaratan dan ketentuan seleksi SBP T.A. 2027.
+5. `Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli_Breakdown.txt` — breakdown per halaman dan guardrail retrieval sumber utama.
 
-`Pengumuman_SBP_TA_2027.pdf` adalah arsip dengan isi yang tidak sesuai pengumuman SBP sehingga tidak digunakan oleh indexer default. OCR lengkap juga dipertahankan sebagai arsip; jawaban default memakai ringkasan terverifikasi untuk menghindari angka OCR yang belum terkonfirmasi.
+`Pengumuman_SBP_TA_2027_Benar.pdf` adalah scan 12 halaman yang diberikan pengguna dan disimpan sebagai arsip sumber. Karena PDF tidak memiliki text layer, `Pengumuman_SBP_TA_2027_Perbaikan_Struktur_Asli.docx` menjadi sumber searchable utama yang mengikuti struktur asli; bagian yang belum terbaca diberi batasan verifikasi.
+
+Rujukan resmi SBP TA 2027 yang digunakan: https://e-dikbang.ssdm.polri.go.id/jadwal_seleksi/12
 
 Sumber terverifikasi tetap memiliki prioritas otoritatif. Breakdown SBP hanya membantu retrieval dan format jawaban; ia tidak boleh menambah persyaratan atau tanggal yang tidak ada pada sumber resmi.
 
-DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen. File index bersifat hasil generate dan tidak disimpan ke Git.
+DOCX diproses dengan `mammoth`, sedangkan PDF diproses dengan `pdf-parse`. Jalankan `npm run index` setelah menambah atau memperbarui dokumen, lalu commit `data/index.json` bersama perubahan sumber. Test knowledge-base memastikan breakdown SBP tetap tercantum pada snapshot index.
 
 Indexer tidak memakai `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.pdf` secara default karena keduanya merupakan salinan sumber Perpol yang dapat menggandakan hasil retrieval. Sumber dapat dipilih eksplisit dengan `KNOWLEDGE_FILES`.
 
