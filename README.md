@@ -75,7 +75,7 @@ Backend_SDM_RAG/
 6. Embedding memakai prefix E5 `passage:`; query memakai prefix `query:`. Model default `Xenova/multilingual-e5-small` menghasilkan vector normalisasi 384 dimensi.
 7. Loader PostgreSQL menggunakan transaksi, menghapus chunk lama per dokumen, lalu memasukkan versi baru ke `rag.documents` dan `rag.chunks`.
 
-### Alur pengolahan knowledge base yang benar
+### Alur pengolahan knowledge base pada prototype
 
 Knowledge base diperlakukan sebagai jalur editorial dan operasional yang berurutan. Setiap tahap harus selesai dan diverifikasi sebelum tahap berikutnya dijalankan.
 
@@ -153,7 +153,7 @@ Setiap blok sebaiknya memuat kalimat jawaban kanonik dengan kata kunci yang lazi
 
 #### Tahap 5 — Normalisasi dan metadata
 
-1. Rapikan whitespace dan buang karakter NUL tanpa menghapus isi substantif.
+1. Rapikan whitespace dan buang karakter NULL tanpa menghapus isi substantif.
 2. Pertahankan marker `HALAMAN n` dan `TOPIK n` agar citation dapat mengarah ke halaman/topik.
 3. Simpan metadata `source`, `documentType`, `authority`, `authorityRank`, `selectionCode`, dan `selectionYear`.
 4. Sumber utama SBP berotoritas `verified_original_structure`; breakdown berotoritas `structured_guidance` dan tidak boleh mengalahkan fakta primer.
@@ -263,7 +263,7 @@ curl -X POST http://localhost:3000/api/chat \
   -d '{"question":"Apa saja unsur Faktor Generik?"}'
 ```
 
-## Knowledge base resmi
+## Knowledge base 
 
 Indexer default menggunakan lima sumber berikut:
 
