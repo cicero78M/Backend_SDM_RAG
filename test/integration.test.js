@@ -39,7 +39,11 @@ test('RAG HTTP integration endpoints expose readiness and structured citations',
 });
 
 test('RAG answers common greetings with identity and supported scope', async () => {
-  for (const question of ['Hi', 'hallo!', 'SELAMAT PAGI', 'Selamat siang.', 'selamat malam']) {
+  for (const question of [
+    'Hi', 'hallo!', 'SELAMAT PAGI', 'Selamat siang.', 'selamat malam',
+    'Hai CICERO!', 'Halo, saya ingin bertanya.', 'HEY 👋',
+    'Assalamualaikum, admin', 'Permisi ya', 'pagi...', 'selamat sore, apa kabar?',
+  ]) {
     const greeting = await request('/api/chat', {
       method: 'POST', headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ question }),
@@ -52,4 +56,14 @@ test('RAG answers common greetings with identity and supported scope', async () 
     assert.match(greeting.body.answer, /SBP/);
     assert.match(greeting.body.answer, /knowledge base/);
   }
+});
+
+test('RAG keeps substantive SDM questions after a greeting on the domain path', async () => {
+  const result = await request('/api/chat', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ question: 'Halo, apa persyaratan administrasi SBP?', topK: 5 }),
+  });
+  assert.equal(result.response.status, 200);
+  assert.notEqual(result.body.provider, 'greeting');
+  assert.notEqual(result.body.provider, 'domain-gate');
 });

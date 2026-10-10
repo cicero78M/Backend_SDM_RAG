@@ -82,10 +82,22 @@ function inDomain(query) {
   return domainTerms.some((term) => normalized.includes(term)) || metaTerms.some((term) => normalized.includes(term));
 }
 function isGreeting(query) {
-  // Sapaan umum dilayani sebagai intent percakapan singkat, bukan pertanyaan
-  // domain yang harus melewati retrieval knowledge base.
-  const normalized = String(query).toLowerCase().replace(/[^a-zA-ZÀ-ÿ\s]/g, ' ').replace(/\s+/g, ' ').trim();
-  return /^(hi|hai|halo|hallo|hello|selamat pagi|selamat siang|selamat sore|selamat malam)$/.test(normalized);
+  // Semua variasi sapaan yang berdiri sendiri, termasuk sapaan dengan nama,
+  // basa-basi singkat, kapitalisasi, emoji, dan tanda baca, memakai jawaban
+  // identitas yang sama. Jika setelah sapaan ada topik SDM, pertanyaan tetap
+  // diteruskan ke jalur domain agar pertanyaan substantif tidak tertelan.
+  const normalized = String(query)
+    .toLocaleLowerCase('id-ID')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const greeting = /^(?:hi|hai|halo|hallo|hello|hey|assalamualaikum|permisi|pagi|siang|sore|malam|selamat\s+(?:pagi|siang|sore|malam))\b/;
+  const match = normalized.match(greeting);
+  if (!match) return false;
+  const remainder = normalized.slice(match[0].length).trim();
+  return !remainder || !inDomain(remainder);
 }
 function greetingAnswer(question) {
   return {
