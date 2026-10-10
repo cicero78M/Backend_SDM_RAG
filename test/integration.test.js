@@ -37,3 +37,19 @@ test('RAG HTTP integration endpoints expose readiness and structured citations',
     assert.equal(typeof inDomain.body.sources[0].score, 'number');
   }
 });
+
+test('RAG answers common greetings with identity and supported scope', async () => {
+  for (const question of ['Hi', 'hallo!', 'SELAMAT PAGI', 'Selamat siang.', 'selamat malam']) {
+    const greeting = await request('/api/chat', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    assert.equal(greeting.response.status, 200);
+    assert.equal(greeting.body.provider, 'greeting');
+    assert.equal(greeting.body.confidence, 'high');
+    assert.deepEqual(greeting.body.sources, []);
+    assert.match(greeting.body.answer, /CICERO SDM RAG/);
+    assert.match(greeting.body.answer, /SBP/);
+    assert.match(greeting.body.answer, /knowledge base/);
+  }
+});
