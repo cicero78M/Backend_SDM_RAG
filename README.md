@@ -328,6 +328,55 @@ Indexer tidak memakai `Perpol_No_1_Tahun_2025.docx` dan `Perpol_No_1_Tahun_2025.
 
 Retrieval tetap dibatasi pada potongan dokumen yang ditemukan. LiteLLM menjadi gateway model chat; backend tidak memanggil SDK provider secara langsung.
 
+### Setting LLM dalam menjawab
+
+LLM tidak menerima pertanyaan secara langsung tanpa konteks. Backend mengatur
+proses jawab dalam empat langkah:
+
+1. **Gate pertanyaan** — salam ditangani deterministik; pertanyaan di luar
+   domain SBP/Perpol dihentikan dengan `provider: domain-gate` tanpa memanggil
+   retrieval atau LLM.
+2. **Retrieval** — pertanyaan domain dicari ke hybrid retrieval. Hanya top-k
+   chunk yang relevan, lengkap dengan nama sumber, halaman, dan nomor bagian,
+   yang dimasukkan ke `CONTEXT`.
+3. **Prompt grounding** — system prompt mengatur LLM untuk menjawab dalam
+   bahasa Indonesia hanya dari `CONTEXT`, tidak memakai pengetahuan luar, dan
+   menyatakan informasi tidak ditemukan bila konteks tidak cukup. Detail OCR
+   yang belum terverifikasi harus diberi penanda ketidakpastian.
+4. **Validasi output** — citation tidak ditulis bebas oleh model. Backend
+   membersihkan citation inline dari teks jawaban dan mengembalikan sumber
+   terstruktur dari hasil retrieval agar sumber tidak dapat dibuat-buat oleh
+   LLM.
+
+Kontrak prompt yang diterapkan di `src/server.js` secara ringkas:
+
+```text
+SYSTEM:
+  Jawab hanya berdasarkan CONTEXT dan gunakan bahasa Indonesia.
+  Jika informasi tidak ada di CONTEXT, jawab:
+  "Informasi tersebut tidak ditemukan dalam dokumen yang tersedia."
+  Jangan mengarang atau memakai pengetahuan luar.
+  Detail OCR yang belum terverifikasi harus dinyatakan belum terverifikasi.
+  Jangan menulis citation di badan jawaban; citation ditampilkan terpisah.
+
+USER:
+  Pertanyaan: <pertanyaan pengguna>
+
+  CONTEXT:
+  [<source>, halaman <page>, bagian <chunk>] <isi chunk retrieval>
+```
+
+Adapter LiteLLM memakai `temperature: 0.1` agar jawaban lebih konsisten dan
+terkendali untuk kebutuhan tanya-jawab berbasis dokumen. Model chat dipilih
+melalui alias internal `copilot-rag`; upstream default-nya adalah
+`github_copilot/gpt-5-mini`. Jika LiteLLM gagal atau tidak tersedia, sistem
+tidak berhenti: `localAnswer()` menyusun jawaban extractive dari chunk yang
+telah lolos retrieval dan menandai provider sebagai `extractive-fallback`.
+
+Dengan demikian, LLM berfungsi sebagai penyusun jawaban berbasis context,
+bukan sebagai sumber pengetahuan utama. Embedding query dan dokumen tetap
+dijalankan lokal oleh Transformers.js, bukan oleh LLM chat.
+
 ### Jalur model yang diterapkan
 
 Konfigurasi saat ini memakai tiga lapis nama yang harus dibedakan:
