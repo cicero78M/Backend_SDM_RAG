@@ -1,0 +1,108 @@
+openapi: 3.0.3
+info:
+  title: CICERO SDM RAG API
+  version: 1.0.0
+  description: API ingestion, indexing, retrieval, dan citation untuk knowledge base SDM.
+servers:
+  - url: http://localhost:3000
+paths:
+  /api/health:
+    get:
+      summary: Readiness backend, index, dan PostgreSQL/pgvector
+      responses:
+        '200': { description: Backend siap }
+        '503': { description: Backend belum siap }
+  /api/stats:
+    get:
+      summary: Statistik knowledge base dan retrieval
+      responses:
+        '200': { description: Statistik tersedia }
+  /api/documents:
+    get:
+      summary: Daftar dokumen terindeks
+      responses:
+        '200': { description: Daftar dokumen tersedia }
+  /api/documents/upload:
+    post:
+      summary: Upload dan index satu dokumen knowledge base
+      description: Menerima satu file pada field `file`, menyimpannya ke data/knowledge, lalu menjalankan indexing ulang.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF, DOCX, TXT, atau MD; maksimum 25 MiB secara default.
+      responses:
+        '201': { description: File tersimpan dan berhasil di-index }
+        '400': { description: Multipart atau format file tidak valid }
+        '409': { description: Nama file sudah ada }
+        '413': { description: Ukuran file melebihi batas }
+        '429': { description: Rate limit upload terlampaui }
+        '500': { description: Upload atau indexing gagal }
+  /api/reindex:
+    post:
+      summary: Bangun ulang index dari knowledge base
+      security:
+        - reindexBearer: []
+      responses:
+        '200': { description: Index berhasil dibuat ulang }
+        '401': { description: Token reindex tidak valid }
+  /api/history:
+    get:
+      summary: Riwayat pertanyaan in-memory proses saat ini
+      responses:
+        '200': { description: Maksimum 20 entri terakhir }
+  /api/chat:
+    post:
+      summary: Ajukan pertanyaan berbasis knowledge base
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question]
+              properties:
+                question: { type: string, example: Apa persyaratan administrasi SBP? }
+                topK: { type: integer, minimum: 1, maximum: 10, default: 5 }
+      responses:
+        '200':
+          description: Jawaban dengan provider, confidence, dan citation terstruktur
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatResponse'
+        '400': { description: Pertanyaan kosong }
+components:
+  securitySchemes:
+    reindexBearer:
+      type: http
+      scheme: bearer
+      description: Opsional; diwajibkan jika RAG_REINDEX_TOKEN diatur.
+  schemas:
+    Citation:
+      type: object
+      properties:
+        source: { type: string }
+        chunk: { type: integer }
+        page: { type: integer, nullable: true }
+        authority: { type: string }
+        score: { type: number }
+        semantic: { type: number }
+    ChatResponse:
+      type: object
+      required: [question, answer, confidence, provider, sources]
+      properties:
+        question: { type: string }
+        answer: { type: string }
+        confidence: { type: string, enum: [low, medium, high] }
+        provider: { type: string, enum: [greeting, domain-gate, extractive-fallback, litellm] }
+        sources:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }

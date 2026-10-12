@@ -390,9 +390,12 @@ Embedding dibuat lokal dengan `Xenova/multilingual-e5-small` melalui Transformer
 - `GET /api/health` — readiness index dan PostgreSQL/pgvector; mengembalikan `503` bila database diminta tetapi tidak siap.
 - `GET /api/stats` — jumlah dokumen/chunk dan provider retrieval.
 - `GET /api/documents` — daftar dokumen dan jumlah chunk/halaman.
+- `POST /api/documents/upload` — upload satu PDF/DOCX/TXT/MD sebagai multipart field `file`, simpan ke `data/knowledge/`, lalu index ulang; default maksimum 25 MiB.
 - `GET /api/history` — 20 pertanyaan terakhir pada proses backend.
 - `POST /api/reindex` — bangun ulang index dan embedding.
 - `POST /api/chat` — body `{ "question": "...", "topK": 5 }`; mengembalikan jawaban, provider, confidence, halaman, chunk, metadata otoritas/tahun seleksi, dan skor semantic.
+
+Spesifikasi OpenAPI tersedia di [`docs/openapi.yaml`](docs/openapi.yaml). Upload menolak ekstensi selain PDF, DOCX, TXT, dan MD, menolak nama file yang sudah ada, dan memakai rate limit terpisah (default 2 request/60 detik). Atur `RAG_UPLOAD_MAX_BYTES` dan `RAG_RATE_LIMIT_UPLOAD_MAX` melalui environment bila diperlukan.
 
 ### Rate limiting
 
