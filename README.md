@@ -6,6 +6,23 @@ Backend REST untuk SDM RAG. Backend melakukan ingest PDF/DOCX/TXT/MD, chunking, 
 
 Prototype ini menjawab pertanyaan berdasarkan knowledge base dokumen SDM Polri, bukan berdasarkan pengetahuan bebas model.
 
+## Tech stack
+
+| Lapisan | Teknologi yang digunakan | Peran |
+| --- | --- | --- |
+| Runtime/API | Node.js, CommonJS, native `http` server | REST API dan orkestrasi request tanpa framework web tambahan |
+| Ekstraksi dokumen | `pdf-parse`, `mammoth`, pembacaan UTF-8 | Mengubah PDF, DOCX, TXT, dan MD menjadi teks terindeks |
+| Chunking/indexing | JavaScript scripts, SHA-256 metadata, JSON snapshot | Normalisasi, chunk 900 kata dengan overlap 150 kata, dan index lokal |
+| Embedding | Hugging Face Transformers.js, `Xenova/multilingual-e5-small` | Embedding lokal multilingual, vector normalisasi 384 dimensi |
+| Storage/retrieval produksi | PostgreSQL 14, `pgvector`, HNSW, PostgreSQL FTS/GIN | Hybrid semantic + full-text retrieval dan penyimpanan persisten |
+| Storage fallback | `data/index.json` | Fallback lexical/semantic yang dapat diaudit saat PostgreSQL tidak tersedia |
+| LLM gateway | LiteLLM OpenAI-compatible API | Gateway model chat; alias internal `copilot-rag` menuju model upstream terkonfigurasi |
+| Model chat aktif | GitHub Copilot melalui LiteLLM, default `github_copilot/gpt-5-mini` | Generasi jawaban berbasis context hasil retrieval |
+| Operasional | systemd (`rag-backend.service`), Docker Compose untuk LiteLLM | Menjalankan backend dan proxy model secara terkelola |
+| Pengujian | Node.js built-in test runner, golden dataset | Unit, integrasi, evaluasi retrieval, citation, dan abstention |
+
+Embedding berjalan lokal dan tidak dikirim ke LiteLLM. LiteLLM hanya menerima context chunk yang sudah diambil retriever; bila provider tidak tersedia, backend memakai jawaban extractive lokal.
+
 ```text
 PDF/DOCX resmi → ekstraksi teks → chunking → index retrieval
 Pertanyaan → retrieval top-k → context + sumber → LiteLLM → jawaban
@@ -229,6 +246,30 @@ score = semantic_cosine × 0.72
 - Jika LiteLLM tidak tersedia atau gagal, `localAnswer()` memilih kalimat paling relevan secara extractive dari chunk.
 - Jawaban tidak boleh memakai pengetahuan luar; jika konteks tidak memuat informasi, backend diarahkan untuk menyatakan informasi tidak ditemukan.
 
+### Response gate salam pengguna
+
+`POST /api/chat` mengevaluasi response gate dalam urutan berikut:
+
+1. Validasi bahwa `question` tidak kosong.
+2. Deteksi salam singkat melalui `isGreeting()` sebelum domain gate dan retrieval.
+3. Jika bukan salam, evaluasi domain gate.
+4. Hanya pertanyaan substantif yang lolos domain gate yang menjalankan retrieval dan, bila tersedia, LiteLLM.
+
+Gate salam menormalkan huruf besar/kecil, aksen, emoji, tanda baca, dan whitespace. Gate mengenali `hi`, `hai`, `halo`, `hallo`, `hello`, `hey`, `assalamualaikum`, `permisi`, `pagi`, `siang`, `sore`, `malam`, serta bentuk `selamat pagi/siang/sore/malam`, termasuk tambahan nama atau basa-basi singkat.
+
+Respons salam bersifat deterministik dan tidak memanggil retrieval/LLM:
+
+```json
+{
+  "provider": "greeting",
+  "confidence": "high",
+  "sources": [],
+  "answer": "Halo! Saya CICERO SDM RAG, asisten informasi SDM..."
+}
+```
+
+Jika salam diikuti pertanyaan SDM substantif, salam tidak menelan pertanyaan tersebut. Contoh `Halo, apa persyaratan administrasi SBP?` tetap masuk jalur domain → retrieval → jawaban bersitasi. Sebaliknya, salam murni seperti `Hai CICERO!`, `Permisi`, atau `Selamat pagi` menerima provider `greeting` dengan citation kosong. Perilaku ini diregresikan pada `test/integration.test.js`.
+
 ### Citation dan audit metadata
 
 Setiap source response dapat memuat `source`, `chunk`, `page`, `score`, `semantic`, `authority`, `documentType`, `selectionCode`, dan `selectionYear`. Metadata ini memungkinkan UI dan auditor membedakan sumber Perpol, pengumuman resmi, serta breakdown terstruktur. Citation dibentuk dari hit retrieval, bukan dari daftar sumber statis.
@@ -296,13 +337,13 @@ Backend LITELLM_MODEL=copilot-rag
         ↓
 LiteLLM model_list alias: copilot-rag
         ↓
-LITELLM_COPILOT_MODEL=github_copilot/gpt-4o-mini
+LITELLM_COPILOT_MODEL=github_copilot/gpt-5-mini
         ↓
 GitHub Copilot authenticated session
 ```
 
 - `copilot-rag` adalah alias publik internal LiteLLM, bukan nama model upstream.
-- `github_copilot/gpt-4o-mini` adalah upstream yang dipakai default Compose saat ini.
+- `github_copilot/gpt-5-mini` adalah upstream yang dipakai default Compose saat ini.
 - `LITELLM_COPILOT_MODEL` boleh dioverride hanya dengan model yang benar-benar tersedia pada sesi/account GitHub Copilot yang aktif; jangan menebak ID model.
 - `LITELLM_MASTER_KEY` adalah key klien untuk proxy lokal. Ganti dengan secret kuat pada deployment non-lokal dan jangan commit nilainya.
 - Cache autentikasi Copilot dipasang melalui `LITELLM_AUTH_DIR`. Compose memberi container akses tulis karena LiteLLM dapat memperbarui cache `api-key.json`; direktori ini harus private dan tidak boleh masuk repository/backup publik.
@@ -312,7 +353,7 @@ Embedding **tidak** memakai GitHub Copilot, Gemini, atau LiteLLM pada jalur RAG 
 
 ```bash
 export LITELLM_MASTER_KEY='sk-sdm-rag-local'
-export LITELLM_COPILOT_MODEL='github_copilot/gpt-4o-mini'
+export LITELLM_COPILOT_MODEL='github_copilot/gpt-5-mini'
 export LITELLM_AUTH_DIR="$HOME/.config/litellm"
 docker compose up -d litellm
 export LITELLM_BASE_URL=http://localhost:4000/v1
@@ -332,7 +373,7 @@ curl -sS -H "Authorization: Bearer $LITELLM_MASTER_KEY" \
   http://127.0.0.1:4000/health
 ```
 
-`/health` LiteLLM harus menampilkan `github_copilot/gpt-4o-mini` pada `healthy_endpoints`. `/v1/models` hanya membuktikan alias terdaftar; health check dan probe chat membuktikan upstream dapat dipakai. Jangan menaruh output yang memuat key atau token pada log/tiket.
+`/health` LiteLLM harus menampilkan `github_copilot/gpt-5-mini` pada `healthy_endpoints`. `/v1/models` hanya membuktikan alias terdaftar; health check dan probe chat membuktikan upstream dapat dipakai. Jangan menaruh output yang memuat key atau token pada log/tiket.
 
 Alur runtime:
 
@@ -438,7 +479,7 @@ Evaluator menghormati respons `429` melalui header `Retry-After` satu kali, sehi
 
 ### Snapshot audit LiteLLM (2026-10-08)
 
-- Process LiteLLM aktif pada port `4000` dan `/health` terautentikasi melaporkan satu endpoint sehat: `github_copilot/gpt-4o-mini`.
+- Process LiteLLM aktif pada port `4000` dan `/health` terautentikasi melaporkan satu endpoint sehat: `github_copilot/gpt-5-mini`.
 - Probe `POST /v1/chat/completions` memakai alias `copilot-rag` berhasil HTTP 200.
 - Unit/integration test RAG lulus `4/4`; hasil ini tidak menggantikan verifikasi upstream berkala.
 - Pada host audit, port `3000` sedang dijalankan PM2 oleh `Backend_SDM_Test`, bukan `Backend_SDM_RAG`. Jalankan service RAG dari direktori ini secara terpisah sebelum memakai endpoint RAG (`npm start`, default port `3000`), dan jangan menyimpulkan RAG production aktif hanya karena port tersebut merespons.

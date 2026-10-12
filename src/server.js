@@ -81,6 +81,33 @@ function inDomain(query) {
   const metaTerms = ['apa saja yang bisa saya tanyakan', 'pertanyaan apa', 'cakupan knowledge base', 'topik yang tersedia', 'bisa ditanyakan', 'contoh pertanyaan'];
   return domainTerms.some((term) => normalized.includes(term)) || metaTerms.some((term) => normalized.includes(term));
 }
+function isGreeting(query) {
+  // Semua variasi sapaan yang berdiri sendiri, termasuk sapaan dengan nama,
+  // basa-basi singkat, kapitalisasi, emoji, dan tanda baca, memakai jawaban
+  // identitas yang sama. Jika setelah sapaan ada topik SDM, pertanyaan tetap
+  // diteruskan ke jalur domain agar pertanyaan substantif tidak tertelan.
+  const normalized = String(query)
+    .toLocaleLowerCase('id-ID')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const greeting = /^(?:hi|hai|halo|hallo|hello|hey|assalamualaikum|permisi|pagi|siang|sore|malam|selamat\s+(?:pagi|siang|sore|malam))\b/;
+  const match = normalized.match(greeting);
+  if (!match) return false;
+  const remainder = normalized.slice(match[0].length).trim();
+  return !remainder || !inDomain(remainder);
+}
+function greetingAnswer(question) {
+  return {
+    question,
+    answer: 'Halo! Saya CICERO SDM RAG, asisten informasi SDM. Saya dapat membantu menjawab pertanyaan tentang SBP, persyaratan, tahapan seleksi, dokumen, pangkat dan MDDP, Perpol, serta informasi terkait yang tersedia dalam knowledge base. Silakan tuliskan pertanyaan Anda.',
+    confidence: 'high',
+    provider: 'greeting',
+    sources: [],
+  };
+}
 function uniqueHits(hits) {
   // Deduplicate sebelum citation agar chunk yang sama tidak tampil berulang.
   const seen = new Set();
@@ -230,6 +257,11 @@ async function handler(req, res) {
     try {
       const { question, topK = 5 } = await body(req);
       if (!question?.trim()) return json(res, 400, { error: 'Pertanyaan wajib diisi.' });
+      if (isGreeting(question)) {
+        const result = greetingAnswer(question);
+        history.push({ ...result, at: new Date().toISOString() });
+        return json(res, 200, result);
+      }
       if (!inDomain(question)) {
         const result = { question, answer: 'Pertanyaan berada di luar cakupan knowledge base SBP dan Perpol yang tersedia.', confidence: 'low', provider: 'domain-gate', sources: [] };
         history.push({ ...result, at: new Date().toISOString() });
