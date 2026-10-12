@@ -6,6 +6,7 @@ const path = require('node:path');
 const { URL } = require('node:url');
 const { spawn } = require('node:child_process');
 const crypto = require('node:crypto');
+const { UploadError, parseMultipartUpload } = require('./upload');
 const { chat, config: litellmConfig } = require('./litellm');
 const { MODEL: embeddingModel, DIMENSIONS: embeddingDimensions, embed } = require('./embedding');
 const ragDb = require('./rag-db');
@@ -28,6 +29,8 @@ const history = [];
 const RATE_LIMIT_WINDOW_MS = Number(process.env.RAG_RATE_LIMIT_WINDOW_MS || 60_000);
 const RATE_LIMIT_MAX = Number(process.env.RAG_RATE_LIMIT_MAX || 30);
 const RATE_LIMIT_REINDEX_MAX = Number(process.env.RAG_RATE_LIMIT_REINDEX_MAX || 2);
+const RATE_LIMIT_UPLOAD_MAX = Number(process.env.RAG_RATE_LIMIT_UPLOAD_MAX || 2);
+const MAX_UPLOAD_BYTES = Number(process.env.RAG_UPLOAD_MAX_BYTES || 25 * 1024 * 1024);
 const reindexToken = String(process.env.RAG_REINDEX_TOKEN || '');
 const rateLimitBuckets = new Map();
 
@@ -214,14 +217,34 @@ async function ensureIndex() {
 }
 async function json(res, status, body) { res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'access-control-allow-origin': '*' }); res.end(JSON.stringify(body)); }
 async function body(req) { let data = ''; for await (const part of req) data += part; return JSON.parse(data || '{}'); }
+async function rawBody(req, maxBytes) {
+  const declared = Number(req.headers['content-length'] || 0);
+  if (declared > maxBytes) throw new UploadError(`Ukuran file melebihi batas ${maxBytes} byte.`, 413, 'UPLOAD_TOO_LARGE');
+  const parts = []; let total = 0;
+  for await (const part of req) {
+    total += part.length;
+    if (total > maxBytes) throw new UploadError(`Ukuran file melebihi batas ${maxBytes} byte.`, 413, 'UPLOAD_TOO_LARGE');
+    parts.push(part);
+  }
+  return Buffer.concat(parts, total);
+}
+async function runIndexer(files) {
+  const env = { ...process.env };
+  if (files?.length) env.KNOWLEDGE_FILES = [...new Set(files)].join(',');
+  await new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [path.join(root, 'scripts', 'index.js')], { stdio: 'inherit', env });
+    child.on('close', (code) => code ? reject(new Error('Indexing failed')) : resolve());
+  });
+  records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || [];
+}
 async function handler(req, res) {
   // Router minimal tanpa framework: CORS, rate limit, endpoint API, dan file
   // static frontend ditangani dalam satu request handler.
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'OPTIONS') { res.writeHead(204, { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' }); return res.end(); }
   if (url.pathname.startsWith('/api/') && req.method !== 'OPTIONS') {
-    const policy = url.pathname === '/api/reindex'
-      ? { key: 'reindex', max: RATE_LIMIT_REINDEX_MAX }
+    const policy = url.pathname === '/api/reindex' || url.pathname === '/api/documents/upload'
+      ? { key: url.pathname === '/api/documents/upload' ? 'upload' : 'reindex', max: url.pathname === '/api/documents/upload' ? RATE_LIMIT_UPLOAD_MAX : RATE_LIMIT_REINDEX_MAX }
       : { key: 'api', max: RATE_LIMIT_MAX };
     const limit = rateLimit(req, policy.key, policy.max);
     res.setHeader('X-RateLimit-Limit', String(policy.max));
@@ -246,12 +269,28 @@ async function handler(req, res) {
     return json(res, 200, { chunks: records.length, documents: new Set(records.map((record) => record.source)).size, embeddingProvider: 'local-transformers', embeddingModel, embeddingDimensions, retrievalMode: database.storage === 'postgresql+pgvector' ? 'hybrid-semantic-fulltext' : 'semantic-lexical-fallback', storage: database.storage, database, model: litellmConfig().chatModel });
   }
   if (req.method === 'GET' && url.pathname === '/api/history') return json(res, 200, { history: history.slice(-20) });
+  if (req.method === 'POST' && url.pathname === '/api/documents/upload') {
+    let uploadedPath;
+    try {
+      const { filename, data } = parseMultipartUpload(await rawBody(req, MAX_UPLOAD_BYTES), req.headers['content-type']);
+      uploadedPath = path.join(root, 'data', 'knowledge', filename);
+      try { await fs.access(uploadedPath); return json(res, 409, { error: 'File dengan nama tersebut sudah ada.', code: 'UPLOAD_EXISTS' }); } catch {}
+      await fs.writeFile(uploadedPath, data, { flag: 'wx' });
+      const files = [...new Set(records.map((record) => record.source).concat(filename))];
+      await runIndexer(files);
+      return json(res, 201, { ok: true, filename, bytes: data.length, chunks: records.filter((record) => record.source === filename).length, indexedDocuments: [...new Set(records.map((record) => record.source))] });
+    } catch (error) {
+      if (uploadedPath) { try { await fs.unlink(uploadedPath); } catch {} }
+      const status = error.statusCode || 500;
+      return json(res, status, { error: status === 500 ? 'Upload atau indexing gagal.' : error.message, code: error.code || 'UPLOAD_FAILED' });
+    }
+  }
   if (req.method === 'POST' && url.pathname === '/api/reindex') {
     if (!validReindexToken(req)) {
       res.setHeader('WWW-Authenticate', 'Bearer realm="rag-reindex"');
       return json(res, 401, { error: 'Token reindex tidak valid atau belum diberikan.', code: 'REINDEX_UNAUTHORIZED' });
     }
-    try { await new Promise((resolve, reject) => { const child = spawn(process.execPath, [path.join(root, 'scripts', 'index.js')], { stdio: 'inherit', env: process.env }); child.on('close', (code) => code ? reject(new Error('Indexing failed')) : resolve()); }); records = JSON.parse(await fs.readFile(indexFile, 'utf8')).records || []; return json(res, 200, { ok: true, chunks: records.length }); } catch (error) { return json(res, 500, { error: error.message }); }
+    try { await runIndexer(); return json(res, 200, { ok: true, chunks: records.length }); } catch (error) { return json(res, 500, { error: error.message }); }
   }
   if (req.method === 'POST' && url.pathname === '/api/chat') {
     try {

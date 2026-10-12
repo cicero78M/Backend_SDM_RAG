@@ -7,7 +7,7 @@ services:
       - "4000:4000"
     environment:
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-sdm-rag-local}
-      LITELLM_COPILOT_MODEL: ${LITELLM_COPILOT_MODEL:-github_copilot/gpt-4o-mini}
+      LITELLM_COPILOT_MODEL: ${LITELLM_COPILOT_MODEL:-github_copilot/gpt-5-mini}
     volumes:
       - ./litellm.config.yaml:/app/config.yaml:ro
       # LiteLLM refreshes/writes api-key.json during provider initialization.
